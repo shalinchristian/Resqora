@@ -19,6 +19,6 @@ public class ResumeController {
     @PostMapping("/upload")
     public ResumeUploadResponse uploadResume(
             @RequestParam("file") MultipartFile file) {
-        return resumeService.uploadResponse(file);
+        return resumeService.uploadResume(file);
     }
 }
