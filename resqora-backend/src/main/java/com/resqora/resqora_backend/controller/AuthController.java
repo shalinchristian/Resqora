@@ -1,6 +1,7 @@
 package com.resqora.resqora_backend.controller;
 
 import com.resqora.resqora_backend.dto.RegistrationRequest;
+import com.resqora.resqora_backend.dto.LoginRequest;
 import com.resqora.resqora_backend.service.AuthService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -21,5 +22,11 @@ public class AuthController {
     public String register(@Valid @RequestBody RegistrationRequest request) {
         authService.register(request);
         return "Registration successful";
+    }
+
+    @PostMapping("/login")
+    public String login(@Valid @RequestBody LoginRequest request) {
+        authService.login(request);
+        return "Login successful";
     }
 }
