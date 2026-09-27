@@ -16,6 +16,17 @@ public class GlobalExceptionHandler {
         return errorResponse(HttpStatus.BAD_REQUEST, exception.getMessage());
     }
 
+    @ExceptionHandler(AuthenticatedUserNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleAuthenticatedUserNotFound(
+            AuthenticatedUserNotFoundException exception) {
+        return errorResponse(HttpStatus.NOT_FOUND, exception.getMessage());
+    }
+
+    @ExceptionHandler(ResumeNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleResumeNotFound(ResumeNotFoundException exception) {
+        return errorResponse(HttpStatus.NOT_FOUND, exception.getMessage());
+    }
+
     @ExceptionHandler(MissingServletRequestPartException.class)
     public ResponseEntity<ErrorResponse> handleMissingFile(MissingServletRequestPartException exception) {
         return errorResponse(HttpStatus.BAD_REQUEST, "Resume file is required");
