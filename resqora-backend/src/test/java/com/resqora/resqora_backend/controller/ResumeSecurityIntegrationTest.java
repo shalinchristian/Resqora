@@ -27,4 +27,17 @@ class ResumeSecurityIntegrationTest {
                         .header("Authorization", "Bearer invalid-token"))
                 .andExpect(status().isUnauthorized());
     }
+
+    @Test
+    void rejectsAnalysisRequestWithoutJwt() throws Exception {
+        mockMvc.perform(get("/api/resumes/1/analysis"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void rejectsAnalysisRequestWithInvalidJwt() throws Exception {
+        mockMvc.perform(get("/api/resumes/1/analysis")
+                        .header("Authorization", "Bearer invalid-token"))
+                .andExpect(status().isUnauthorized());
+    }
 }
