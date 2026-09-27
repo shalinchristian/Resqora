@@ -1,6 +1,7 @@
 package com.resqora.resqora_backend.controller;
 
 import com.resqora.resqora_backend.dto.resume.ResumeUploadResponse;
+import com.resqora.resqora_backend.model.analysis.AnalysisResult;
 import com.resqora.resqora_backend.model.resume.ParsedResume;
 import com.resqora.resqora_backend.service.ResumeService;
 import org.springframework.security.core.Authentication;
@@ -32,5 +33,12 @@ public class ResumeController {
             @PathVariable Long resumeId,
             Authentication authentication) {
         return resumeService.getParsedResume(resumeId, authentication);
+    }
+
+    @GetMapping("/{resumeId}/analysis")
+    public AnalysisResult getAnalysis(
+            @PathVariable Long resumeId,
+            Authentication authentication) {
+        return resumeService.getAnalysis(resumeId, authentication);
     }
 }
