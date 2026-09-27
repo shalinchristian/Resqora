@@ -7,6 +7,7 @@ import com.resqora.resqora_backend.model.resume.ParsedResume;
 import com.resqora.resqora_backend.repository.ResumeRepository;
 import com.resqora.resqora_backend.repository.UserRepository;
 import com.resqora.resqora_backend.service.ResumeService;
+import com.resqora.resqora_backend.service.analysis.ResumeAnalyzer;
 import com.resqora.resqora_backend.service.extraction.DocxTextExtractor;
 import com.resqora.resqora_backend.service.extraction.DocumentTextExtractionService;
 import com.resqora.resqora_backend.service.extraction.PdfTextExtractor;
@@ -48,6 +49,7 @@ class ResumeControllerTest {
         UserRepository userRepository = mock(UserRepository.class);
         ResumeRepository resumeRepository = mock(ResumeRepository.class);
         ResumeParser resumeParser = mock(ResumeParser.class);
+        ResumeAnalyzer resumeAnalyzer = mock(ResumeAnalyzer.class);
         User user = mock(User.class);
         when(userRepository.findById(1L)).thenReturn(java.util.Optional.of(user));
         when(resumeRepository.save(any(Resume.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -55,7 +57,7 @@ class ResumeControllerTest {
         authentication = new UsernamePasswordAuthenticationToken(1L, null, List.of());
         mockMvc = MockMvcBuilders
             .standaloneSetup(new ResumeController(
-                new ResumeService(extractionService, resumeRepository, userRepository, resumeParser)))
+                new ResumeService(extractionService, resumeRepository, userRepository, resumeParser, resumeAnalyzer)))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -120,6 +122,16 @@ class ResumeControllerTest {
         mockMvc.perform(
                         org.springframework.test.web.servlet.request.MockMvcRequestBuilders
                                 .get("/api/resumes/3/parsed")
+                                .principal(authentication))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("Resume not found"));
+    }
+
+    @Test
+    void returnsNotFoundForMissingAnalysisResume() throws Exception {
+        mockMvc.perform(
+                        org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                                .get("/api/resumes/3/analysis")
                                 .principal(authentication))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message").value("Resume not found"));

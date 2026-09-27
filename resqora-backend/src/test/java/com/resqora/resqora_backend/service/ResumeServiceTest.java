@@ -3,9 +3,11 @@ package com.resqora.resqora_backend.service;
 import com.resqora.resqora_backend.entity.Resume;
 import com.resqora.resqora_backend.entity.User;
 import com.resqora.resqora_backend.exception.ResumeNotFoundException;
+import com.resqora.resqora_backend.model.analysis.AnalysisResult;
 import com.resqora.resqora_backend.model.resume.ParsedResume;
 import com.resqora.resqora_backend.repository.ResumeRepository;
 import com.resqora.resqora_backend.repository.UserRepository;
+import com.resqora.resqora_backend.service.analysis.ResumeAnalyzer;
 import com.resqora.resqora_backend.service.extraction.DocumentTextExtractionService;
 import com.resqora.resqora_backend.service.parser.ResumeParser;
 import org.junit.jupiter.api.Test;
@@ -17,11 +19,11 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ResumeServiceTest {
     @Test
@@ -30,14 +32,15 @@ class ResumeServiceTest {
         ResumeRepository resumeRepository = mock(ResumeRepository.class);
         UserRepository userRepository = mock(UserRepository.class);
         ResumeParser resumeParser = mock(ResumeParser.class);
+        ResumeAnalyzer resumeAnalyzer = mock(ResumeAnalyzer.class);
         User user = mock(User.class);
         when(userRepository.findById(7L)).thenReturn(Optional.of(user));
         when(extractionService.extract(any())).thenReturn("Extracted resume text");
         when(resumeRepository.save(any(Resume.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         ResumeService resumeService = new ResumeService(
-            extractionService, resumeRepository, userRepository, resumeParser);
-        Authentication authentication = new UsernamePasswordAuthenticationToken(7L, null, List.of());
+                extractionService, resumeRepository, userRepository, resumeParser, resumeAnalyzer);
+        Authentication authentication = authenticationFor(7L);
         MockMultipartFile file = new MockMultipartFile(
                 "file", "resume.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 "document".getBytes());
@@ -59,6 +62,7 @@ class ResumeServiceTest {
         ResumeRepository resumeRepository = mock(ResumeRepository.class);
         UserRepository userRepository = mock(UserRepository.class);
         ResumeParser resumeParser = mock(ResumeParser.class);
+        ResumeAnalyzer resumeAnalyzer = mock(ResumeAnalyzer.class);
         User user = mock(User.class);
         Resume resume = mock(Resume.class);
         ParsedResume parsedResume = new ParsedResume(
@@ -71,12 +75,38 @@ class ResumeServiceTest {
         when(resumeParser.parse("stored resume text")).thenReturn(parsedResume);
 
         ResumeService resumeService = new ResumeService(
-                extractionService, resumeRepository, userRepository, resumeParser);
+                extractionService, resumeRepository, userRepository, resumeParser, resumeAnalyzer);
 
-        ParsedResume result = resumeService.getParsedResume(9L, authenticationFor(7L));
-
-        assertEquals(parsedResume, result);
+        assertEquals(parsedResume, resumeService.getParsedResume(9L, authenticationFor(7L)));
         verify(resumeParser).parse("stored resume text");
+    }
+
+    @Test
+    void analyzesAuthenticatedUsersOwnResume() {
+        DocumentTextExtractionService extractionService = mock(DocumentTextExtractionService.class);
+        ResumeRepository resumeRepository = mock(ResumeRepository.class);
+        UserRepository userRepository = mock(UserRepository.class);
+        ResumeParser resumeParser = mock(ResumeParser.class);
+        ResumeAnalyzer resumeAnalyzer = mock(ResumeAnalyzer.class);
+        User user = mock(User.class);
+        Resume resume = mock(Resume.class);
+        ParsedResume parsedResume = new ParsedResume(
+                "Alex Johnson", "alex@example.com", null, null,
+                List.of(), List.of(), List.of(), List.of(), List.of());
+        AnalysisResult analysisResult = new AnalysisResult(10, 4, 0, 0, 10, 0, List.of());
+        when(resumeRepository.findById(9L)).thenReturn(Optional.of(resume));
+        when(resume.getUser()).thenReturn(user);
+        when(user.getId()).thenReturn(7L);
+        when(resume.getExtractedText()).thenReturn("stored resume text");
+        when(resumeParser.parse("stored resume text")).thenReturn(parsedResume);
+        when(resumeAnalyzer.analyze(parsedResume)).thenReturn(analysisResult);
+
+        ResumeService resumeService = new ResumeService(
+                extractionService, resumeRepository, userRepository, resumeParser, resumeAnalyzer);
+
+        assertEquals(analysisResult, resumeService.getAnalysis(9L, authenticationFor(7L)));
+        verify(resumeParser).parse("stored resume text");
+        verify(resumeAnalyzer).analyze(parsedResume);
     }
 
     @Test
@@ -85,6 +115,7 @@ class ResumeServiceTest {
         ResumeRepository resumeRepository = mock(ResumeRepository.class);
         UserRepository userRepository = mock(UserRepository.class);
         ResumeParser resumeParser = mock(ResumeParser.class);
+        ResumeAnalyzer resumeAnalyzer = mock(ResumeAnalyzer.class);
         User owner = mock(User.class);
         Resume resume = mock(Resume.class);
         when(resumeRepository.findById(9L)).thenReturn(Optional.of(resume));
@@ -92,7 +123,7 @@ class ResumeServiceTest {
         when(owner.getId()).thenReturn(99L);
 
         ResumeService resumeService = new ResumeService(
-                extractionService, resumeRepository, userRepository, resumeParser);
+                extractionService, resumeRepository, userRepository, resumeParser, resumeAnalyzer);
 
         assertThrows(ResumeNotFoundException.class,
                 () -> resumeService.getParsedResume(9L, authenticationFor(7L)));
@@ -105,10 +136,11 @@ class ResumeServiceTest {
         ResumeRepository resumeRepository = mock(ResumeRepository.class);
         UserRepository userRepository = mock(UserRepository.class);
         ResumeParser resumeParser = mock(ResumeParser.class);
+        ResumeAnalyzer resumeAnalyzer = mock(ResumeAnalyzer.class);
         when(resumeRepository.findById(9L)).thenReturn(Optional.empty());
 
         ResumeService resumeService = new ResumeService(
-                extractionService, resumeRepository, userRepository, resumeParser);
+                extractionService, resumeRepository, userRepository, resumeParser, resumeAnalyzer);
 
         assertThrows(ResumeNotFoundException.class,
                 () -> resumeService.getParsedResume(9L, authenticationFor(7L)));
