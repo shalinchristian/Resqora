@@ -4,6 +4,7 @@ import com.resqora.resqora_backend.exception.GlobalExceptionHandler;
 import com.resqora.resqora_backend.entity.Resume;
 import com.resqora.resqora_backend.entity.User;
 import com.resqora.resqora_backend.model.resume.ParsedResume;
+import com.resqora.resqora_backend.repository.ResumeAnalysisRepository;
 import com.resqora.resqora_backend.repository.ResumeRepository;
 import com.resqora.resqora_backend.repository.UserRepository;
 import com.resqora.resqora_backend.service.ResumeService;
@@ -57,7 +58,7 @@ class ResumeControllerTest {
         authentication = new UsernamePasswordAuthenticationToken(1L, null, List.of());
         mockMvc = MockMvcBuilders
             .standaloneSetup(new ResumeController(
-                new ResumeService(extractionService, resumeRepository, userRepository, resumeParser, resumeAnalyzer)))
+                new ResumeService(extractionService, resumeRepository, userRepository, resumeParser, resumeAnalyzer, mock(ResumeAnalysisRepository.class))))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -112,7 +113,7 @@ class ResumeControllerTest {
         MockMultipartFile file = new MockMultipartFile(
                 "file", "resume.pdf", "application/pdf", "not a pdf".getBytes());
 
-        mockMvc.perform(multipart("/api/resumes/upload").file(file))
+        mockMvc.perform(multipart("/api/resumes/upload").file(file).principal(authentication))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Unable to extract text from PDF"));
     }

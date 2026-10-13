@@ -26,12 +26,13 @@ class AuthControllerTest {
         User user = mock(User.class);
         when(user.getId()).thenReturn(42L);
         when(user.getEmail()).thenReturn("user@example.com");
+        when(user.getDisplayName()).thenReturn("Asha Rao");
         when(userRepository.findById(42L)).thenReturn(Optional.of(user));
 
         ResponseEntity<MeResponse> response = authController.me(authenticationFor(42L));
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
-        assertEquals(new MeResponse(42L, "user@example.com"), response.getBody());
+        assertEquals(new MeResponse(42L, "user@example.com", "Asha Rao"), response.getBody());
     }
 
     @Test

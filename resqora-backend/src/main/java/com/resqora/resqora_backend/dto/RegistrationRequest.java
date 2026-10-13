@@ -10,5 +10,13 @@ public record RegistrationRequest(
         String email,
         @NotBlank
         @Size(min = 8, max = 255)
-        String password) {
+        String password,
+        @NotBlank
+        @Size(min = 1, max = 100)
+        String name) {
+
+    // trim the name before validation runs, so "  Asha  " is stored as "Asha" and "   " counts as blank
+    public RegistrationRequest {
+        name = name == null ? null : name.trim();
+    }
 }
