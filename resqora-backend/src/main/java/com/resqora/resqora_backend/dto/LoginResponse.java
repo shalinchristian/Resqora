@@ -1,4 +1,4 @@
 package com.resqora.resqora_backend.dto;
 
-public record LoginResponse(String token) {
+public record LoginResponse(String token, String name) {
 }

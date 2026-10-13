@@ -20,12 +20,21 @@ public class User {
     @Column(name = "password_hash", nullable = false, length = 255)
     private String passwordHash;
 
+    // nullable: users created before names were added have no name
+    @Column(length = 100)
+    private String name;
+
     protected User() {
     }
 
     public User(String email, String passwordHash) {
         this.email = email;
         this.passwordHash = passwordHash;
+    }
+
+    public User(String email, String passwordHash, String name) {
+        this(email, passwordHash);
+        this.name = name;
     }
 
     public Long getId() {
@@ -38,5 +47,14 @@ public class User {
 
     public String getPasswordHash() {
         return passwordHash;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    // What the app shows: the name, or the email for older users without a name
+    public String getDisplayName() {
+        return name == null || name.isBlank() ? email : name;
     }
 }
