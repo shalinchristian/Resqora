@@ -137,11 +137,12 @@ class LoginAndInputChecksIntegrationTest {
     }
 
     @Test
-    void jobsWithoutKeysIs503EvenWhenNoSkills() throws Exception {
+    void jobsWithNoSkillsIsEmptyWithoutCallingJobicy() throws Exception { // jobicy doesnt need a key
         String token = newUser();
         long id = upload(token, docx("Asha Rao", "asha@x.com", "Just a line of text with nothing else in it at all."));
         mockMvc.perform(get("/api/resumes/" + id + "/jobs").header("Authorization", "Bearer " + token))
-                .andExpect(status().isServiceUnavailable());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.jobs.length()").value(0));
     }
 
     @Test

@@ -1,2 +1,2 @@
-// switch features on or off in one place. Set jobs to true once the Adzuna keys are set up
-export const FEATURES = { jobs: false, changePassword: false }
+// turn features on or off here. job suggestions come from Jobicy (free, no key)
+export const FEATURES = { jobs: true, changePassword: false }
