@@ -11,10 +11,13 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.List;
+import org.w3c.dom.Node;
 
 /**
- * Reads paragraphs and tables in document order. Each table row becomes one line:
+ * Reads paragraphs, text boxes and tables (including nested ones) in document order.
+ * Layout tables (nested tables or several paragraphs in a cell) are read cell by cell, one line per paragraph. Each table row becomes one line:
  * a two-cell "label | value" row becomes "Label: value" (so "Languages" is a skill group, not a heading),
  * any other row joins its cells with " | " so the parser's pipe fields pick them up.
  */
@@ -23,18 +26,90 @@ public class DocxTextExtractor {
     public String extract(InputStream inputStream) {
         try (XWPFDocument document = new XWPFDocument(inputStream)) {
             StringBuilder text = new StringBuilder();
-            for (IBodyElement element : document.getBodyElements()) {
-                if (element instanceof XWPFParagraph paragraph) {
-                    appendLine(text, paragraph.getText());
-                } else if (element instanceof XWPFTable table) {
-                    for (XWPFTableRow row : table.getRows()) {
+            appendElements(text, document.getBodyElements());
+            return text.toString();
+        } catch (IOException | RuntimeException exception) {
+            throw new DocumentExtractionException("Unable to extract text from DOCX", exception);
+        }
+    }
+
+    private void appendElements(StringBuilder text, List<IBodyElement> elements) {
+        for (IBodyElement element : elements) {
+            if (element instanceof XWPFParagraph paragraph) {
+                for (String line : paragraphLines(paragraph)) {
+                    appendLine(text, line);
+                }
+            } else if (element instanceof XWPFTable table) {
+                for (XWPFTableRow row : table.getRows()) {
+                    if (isLayoutRow(row)) {
+                        // a layout table (nested tables or several paragraphs per cell): read cell by cell
+                        for (XWPFTableCell cell : row.getTableCells()) {
+                            appendElements(text, cell.getBodyElements());
+                        }
+                    } else {
                         appendLine(text, rowText(row));
                     }
                 }
             }
-            return text.toString();
-        } catch (IOException | RuntimeException exception) {
-            throw new DocumentExtractionException("Unable to extract text from DOCX", exception);
+        }
+    }
+
+    // A simple data row has one paragraph per cell and no nested table.
+    private static boolean isLayoutRow(XWPFTableRow row) {
+        for (XWPFTableCell cell : row.getTableCells()) {
+            long paragraphs = cell.getParagraphs().stream().filter(p -> !p.getText().isBlank()).count();
+            if (!cell.getTables().isEmpty() || paragraphs > 1) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The paragraph's own text as one line, plus one line per paragraph inside any text box (w:txbxContent).
+     * Walks the XML so text-box wrappers (VML/DrawingML) add nothing, and mc:Fallback copies are skipped.
+     */
+    static List<String> paragraphLines(XWPFParagraph paragraph) {
+        List<String> boxLines = new ArrayList<>();
+        StringBuilder own = new StringBuilder();
+        walk(paragraph.getCTP().getDomNode(), own, boxLines);
+        List<String> lines = new ArrayList<>();
+        lines.add(own.toString());
+        lines.addAll(boxLines);
+        return lines;
+    }
+
+    private static void walk(Node node, StringBuilder own, List<String> boxLines) {
+        for (Node child = node.getFirstChild(); child != null; child = child.getNextSibling()) {
+            String name = child.getLocalName();
+            if (name == null) {
+                continue;
+            }
+            switch (name) {
+                case "Fallback" -> { }
+                case "txbxContent" -> {
+                    for (Node p = child.getFirstChild(); p != null; p = p.getNextSibling()) {
+                        if ("p".equals(p.getLocalName())) {
+                            StringBuilder line = new StringBuilder();
+                            walk(p, line, boxLines);
+                            boxLines.add(line.toString());
+                        } else if ("tbl".equals(p.getLocalName())) {
+                            StringBuilder line = new StringBuilder();
+                            walk(p, line, boxLines);
+                            boxLines.add(line.toString());
+                        }
+                    }
+                }
+                case "t" -> {
+                    for (Node text = child.getFirstChild(); text != null; text = text.getNextSibling()) {
+                        if (text.getNodeType() == Node.TEXT_NODE) {
+                            own.append(text.getNodeValue());
+                        }
+                    }
+                }
+                case "tab" -> own.append(' ');
+                default -> walk(child, own, boxLines);
+            }
         }
     }
 

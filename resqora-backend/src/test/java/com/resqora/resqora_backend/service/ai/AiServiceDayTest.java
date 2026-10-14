@@ -19,4 +19,12 @@ class AiServiceDayTest {
         assertEquals(Instant.parse("2026-10-12T18:30:00Z"),
                 AiService.startOfDay(Instant.parse("2026-10-13T17:00:00Z"), IST));
     }
+
+    @Test
+    void retryAfterCountsToNextIstMidnight() {
+        // 2026-10-14 06:30 UTC = 12:00 IST -> 12 h to midnight IST
+        assertEquals(12 * 3600, AiService.secondsUntilNextMidnight(Instant.parse("2026-10-14T06:30:00Z"), IST));
+        // 1 second before midnight IST
+        assertEquals(1, AiService.secondsUntilNextMidnight(Instant.parse("2026-10-14T18:29:59Z"), IST));
+    }
 }

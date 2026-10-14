@@ -90,13 +90,13 @@ class ResumeControllerTest {
     }
 
     @Test
-    void rejectsFilesLargerThanFiveMegabytes() throws Exception {
+    void rejectsFilesLargerThanTwoMegabytes() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
-                "file", "resume.pdf", "application/pdf", new byte[5 * 1024 * 1024 + 1]);
+                "file", "resume.pdf", "application/pdf", new byte[2 * 1024 * 1024 + 1]);
 
         mockMvc.perform(multipart("/api/resumes/upload").file(file))
                 .andExpect(status().is(413))
-                .andExpect(jsonPath("$.message").value("File size must not exceed 5 MB"));
+                .andExpect(jsonPath("$.message").value("File size must not exceed 2 MB"));
     }
 
     @Test
@@ -107,7 +107,7 @@ class ResumeControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(header().string("Location", org.hamcrest.Matchers.endsWith("/analysis")))
                 .andExpect(jsonPath("$.fileName").value("resume.pdf"))
-                .andExpect(jsonPath("$.extractedText").value(org.hamcrest.Matchers.containsString("Resume text")));
+                .andExpect(jsonPath("$.extractedText").doesNotExist()); // slice 14: no longer echoed (use /parsed)
     }
 
     @Test

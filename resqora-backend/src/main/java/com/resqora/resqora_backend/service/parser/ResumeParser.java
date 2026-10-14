@@ -45,6 +45,13 @@ public class ResumeParser {
     private static final Pattern INSTITUTION_PATTERN = Pattern.compile(
             "(?i)\\b(?:university|institute|college|school|academy|iit|nit|iiit|iisc|polytechnic)\\b");
 
+    // Bullet glyphs seen in real resumes: - * • ▪ ◦ ➤ ► ▸ ‣ ⁃ ○ ● ■ □ ◆ ❖ ✓ ✔ → » – · and "1." / "a)" numbering
+    private static final String BULLET = "(?:[-*•▪◦➤►▸▹‣⁃○●■□◆◇❖✓✔✗→»–·]|\\d{1,2}[.)](?=\\s)|[a-z][)](?=\\s))";
+    private static final Pattern BULLET_LINE = Pattern.compile("^\\s*" + BULLET + "\\s+.*$");
+    private static final Pattern BULLET_PREFIX = Pattern.compile("^\\s*" + BULLET + "\\s*");
+    // " — " (or " – " between non-date parts) used instead of "|" in an entry header
+    private static final Pattern DASH_FIELD_SEPARATOR = Pattern.compile("\\s+[—–]\\s+");
+
     private static final Map<String, Section> HEADINGS = buildHeadings();
 
     public ParsedResume parse(String extractedText) {
@@ -117,7 +124,7 @@ public class ResumeParser {
             "SOFTWARE", "INDUSTRY", "EDUCATIONAL", "COURSES", "LICENSES", "NOTABLE", "MAJOR", "RECENT", "SPOKEN");
 
     private static Section headingOf(String line) {
-        String cleaned = line.replaceFirst("^\\s*[-*•▪◦]\\s*", "").trim();
+        String cleaned = BULLET_PREFIX.matcher(line).replaceFirst("").trim();
         if (cleaned.isEmpty() || cleaned.length() > 40 || cleaned.matches(".*[|,;0-9].*")
                 || (cleaned.indexOf(':') >= 0 && cleaned.indexOf(':') < cleaned.length() - 1)) {
             return null;
@@ -209,7 +216,8 @@ public class ResumeParser {
     private String extractLocation(List<String> lines) {
         List<String> fields = new ArrayList<>();
         for (String line : lines) {
-            fields.addAll(Arrays.asList(cleanLine(line).split("\\s*\\|\\s*")));
+            // "|", wide gaps and emoji icons ("📍 Jaipur, Rajasthan") all separate contact fields
+            fields.addAll(Arrays.asList(cleanLine(line).split("\\s*\\|\\s*|\\s{2,}|[\\p{So}\\x{FE0F}]+")));
         }
         for (String field : fields) {
             String cleanLine = field.trim();
@@ -270,7 +278,7 @@ public class ResumeParser {
             if (colonIndex >= 0) {
                 normalizedLine = normalizedLine.substring(colonIndex + 1);
             }
-            for (String skill : normalizedLine.split("\\s*[,;|]\\s*|\\s+and\\s+|\\s+&\\s+")) {
+            for (String skill : normalizedLine.split("\\s*[,;|•·▪◦]\\s*|\\s+/\\s+|\\s+and\\s+|\\s+&\\s+")) {
                 String cleanSkill = canonicalizeSkill(cleanLine(skill));
                 if (!cleanSkill.isBlank()) {
                     uniqueSkills.putIfAbsent(cleanSkill.toLowerCase(Locale.ROOT), cleanSkill);
@@ -397,11 +405,15 @@ public class ResumeParser {
                 // a long bullet wrapped onto the next line: same bullet, not a new entry
                 current = current.withDescription(append(current.description(), line));
                 previousText = line;
+            } else if (!bullet && current != null && current.dates() == null && current.description() == null
+                    && DATE_PATTERN.matcher(line).matches()) {
+                // dates on their own line under the header ("TCS | Java Developer" / "Apr 2021 - Present")
+                current = new HeaderEntry(current.header(), current.title(), line, null);
             } else if (!bullet) {
                 if (current != null) {
                     entries.add(current);
                 }
-                List<String> fields = splitFields(line);
+                List<String> fields = pipeFields ? headerFields(line) : splitFields(line);
                 boolean piped = pipeFields && fields.size() > 1;
                 String header = fields.get(0);
                 String title = piped ? fieldOrNull(fields, 1) : null;
@@ -479,11 +491,47 @@ public class ResumeParser {
     }
 
     private boolean isBullet(String line) {
-        return line.matches("^\\s*[-*•▪◦]\\s+.*$");
+        return BULLET_LINE.matcher(line).matches();
     }
 
     private String cleanLine(String line) {
-        return line.replaceFirst("^\\s*[-*•▪◦]\\s*", "").trim();
+        return BULLET_PREFIX.matcher(line).replaceFirst("").trim();
+    }
+
+    // Header fields split on "|", else on " — " / " – " (keeping a "May 2022 – Present" range together)
+    private List<String> headerFields(String line) {
+        if (line.contains("|")) {
+            return splitFields(line);
+        }
+        String[] parts = DASH_FIELD_SEPARATOR.split(line);
+        if (parts.length < 2) {
+            return List.of(cleanLine(line));
+        }
+        List<String> fields = new ArrayList<>();
+        for (String part : parts) {
+            String trimmed = part.trim();
+            int last = fields.size() - 1;
+            if (last >= 0 && isDateOnly(fields.get(last)) && isDateEndOnly(trimmed)) {
+                fields.set(last, fields.get(last) + " – " + trimmed);
+            } else {
+                fields.add(trimmed);
+            }
+        }
+        if (fields.size() == 2 && containsDate(fields.get(1)) && !containsDate(fields.get(0))) {
+            fields.add(1, ""); // "Infosys – Jul 2020 – Apr 2022": company and dates, no title
+        }
+        return fields.size() > 1 ? fields : List.of(cleanLine(line));
+    }
+
+    private static final Pattern DATE_POINT_ONLY = Pattern.compile("(?iu)^(?:expected\\s+)?" + DATE_POINT + "$");
+    private static final Pattern DATE_END_ONLY = Pattern.compile("(?iu)^" + DATE_END + "$");
+
+    private boolean isDateOnly(String field) {
+        return DATE_POINT_ONLY.matcher(field.trim()).matches();
+    }
+
+    private boolean isDateEndOnly(String field) {
+        return DATE_END_ONLY.matcher(field.trim()).matches();
     }
 
     private ParsedResume emptyResume() {

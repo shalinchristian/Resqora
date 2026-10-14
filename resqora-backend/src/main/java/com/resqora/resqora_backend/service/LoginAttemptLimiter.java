@@ -44,6 +44,22 @@ public class LoginAttemptLimiter {
         return failures(byEmail, key(email)) >= maxPerEmail || failures(byIp, ip) >= maxPerIp;
     }
 
+    // seconds until the blocking window ends (for the Retry-After header); at least 1
+    public long retryAfterSeconds(String email, String ip) {
+        long seconds = 1;
+        if (failures(byEmail, key(email)) >= maxPerEmail) {
+            seconds = Math.max(seconds, remaining(byEmail.get(key(email))));
+        }
+        if (failures(byIp, ip) >= maxPerIp) {
+            seconds = Math.max(seconds, remaining(byIp.get(ip)));
+        }
+        return seconds;
+    }
+
+    private long remaining(Window w) {
+        return w == null ? 0 : Math.max(0, Duration.between(clock.instant(), w.start().plus(window)).toSeconds() + 1);
+    }
+
     public void recordFailure(String email, String ip) {
         increment(byEmail, key(email));
         increment(byIp, ip);

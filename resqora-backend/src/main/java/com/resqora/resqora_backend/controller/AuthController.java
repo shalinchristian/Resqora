@@ -1,5 +1,7 @@
 package com.resqora.resqora_backend.controller;
 
+import com.resqora.resqora_backend.dto.ChangePasswordRequest;
+import com.resqora.resqora_backend.dto.DeleteAccountRequest;
 import com.resqora.resqora_backend.dto.LoginRequest;
 import com.resqora.resqora_backend.dto.LoginResponse;
 import com.resqora.resqora_backend.dto.MeResponse;
@@ -13,7 +15,9 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -50,5 +54,17 @@ public class AuthController {
     @PatchMapping("/me")
     public MeResponse updateMe(@Valid @RequestBody UpdateNameRequest request, Authentication authentication) {
         return authService.updateName((Long) authentication.getPrincipal(), request.name());
+    }
+
+    @PutMapping("/password")
+    public ResponseEntity<Void> changePassword(@Valid @RequestBody ChangePasswordRequest request, Authentication authentication) {
+        authService.changePassword((Long) authentication.getPrincipal(), request);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/me")
+    public ResponseEntity<Void> deleteMe(@Valid @RequestBody DeleteAccountRequest request, Authentication authentication) {
+        authService.deleteAccount((Long) authentication.getPrincipal(), request.password());
+        return ResponseEntity.noContent().build();
     }
 }

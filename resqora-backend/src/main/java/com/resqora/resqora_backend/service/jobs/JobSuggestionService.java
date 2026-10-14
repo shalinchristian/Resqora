@@ -60,13 +60,13 @@ public class JobSuggestionService {
         }
 
         // 2. search keywords = first few resume skills that the skill dictionary recognises
+        // not configured -> 503 for every resume (checked first, so a resume without skills can't hide it)
+        if (!jobSearchClient.isConfigured()) {
+            throw new JobSuggestionsUnavailableException();
+        }
         List<String> searchSkills = searchSkills(parsedResume.skills());
         if (searchSkills.isEmpty()) {
             return new JobSuggestionsResponse(List.of(), false);
-        }
-
-        if (!jobSearchClient.isConfigured()) {
-            throw new JobSuggestionsUnavailableException();
         }
         List<JobPosting> postings;
         try {

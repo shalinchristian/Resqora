@@ -41,7 +41,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         // error forwards must keep their real status (500/400), not turn into 401
                         .requestMatchers("/error").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login")
+                        // any method, so GET /api/auth/login gets 405 (wrong method) rather than 401
+                        .requestMatchers("/api/auth/register", "/api/auth/login")
                         .permitAll()
                         // Swagger UI and the OpenAPI JSON are public so the docs page can load
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**")
@@ -64,7 +65,7 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowedOrigins(allowedOrigins);
-        config.setAllowedMethods(List.of("GET", "POST", "PATCH", "DELETE", "OPTIONS"));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setExposedHeaders(List.of("Location"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type"));
 
