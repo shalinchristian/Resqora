@@ -9,4 +9,7 @@ public interface AiUsageRepository extends JpaRepository<AiUsage, Long> {
     long countByCreatedAtGreaterThanEqual(Instant since);
 
     long countByUserIdAndCreatedAtGreaterThanEqual(Long userId, Instant since);
+
+    // demo reset: clear the demo user's AI usage so its daily limit starts fresh
+    long deleteByUserId(Long userId);
 }

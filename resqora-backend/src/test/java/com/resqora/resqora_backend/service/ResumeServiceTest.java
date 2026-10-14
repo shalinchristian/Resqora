@@ -100,14 +100,14 @@ class ResumeServiceTest {
         when(user.getId()).thenReturn(7L);
         when(resume.getExtractedText()).thenReturn("stored resume text");
         when(resumeParser.parse("stored resume text")).thenReturn(parsedResume);
-        when(resumeAnalyzer.analyze(parsedResume)).thenReturn(analysisResult);
+        when(resumeAnalyzer.analyze(org.mockito.ArgumentMatchers.eq(parsedResume), org.mockito.ArgumentMatchers.any())).thenReturn(analysisResult);
 
         ResumeService resumeService = new ResumeService(
                 extractionService, resumeRepository, userRepository, resumeParser, resumeAnalyzer, mock(ResumeAnalysisRepository.class), new org.springframework.transaction.support.TransactionTemplate(mock(org.springframework.transaction.PlatformTransactionManager.class)));
 
         assertEquals(analysisResult, resumeService.getAnalysis(9L, authenticationFor(7L)));
         verify(resumeParser).parse("stored resume text");
-        verify(resumeAnalyzer).analyze(parsedResume);
+        verify(resumeAnalyzer).analyze(org.mockito.ArgumentMatchers.eq(parsedResume), org.mockito.ArgumentMatchers.any());
     }
 
     @Test

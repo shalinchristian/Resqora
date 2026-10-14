@@ -16,6 +16,8 @@ public record RegistrationRequest(
         String password,
         @NotBlank
         @Size(min = 1, max = 50)
+        // no control characters (NUL, newlines, tabs...) in a name shown on screen
+        @Pattern(regexp = "^[^\\p{Cntrl}]*$", message = "must not contain control characters")
         String name) {
 
     // trim the name before validation runs, so "  Asha  " is stored as "Asha" and "   " counts as blank

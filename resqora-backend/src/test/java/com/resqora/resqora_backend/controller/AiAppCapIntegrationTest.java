@@ -43,24 +43,24 @@ class AiAppCapIntegrationTest {
     @Autowired private AiIntegrationTest.FakeAiClient fakeAi;
 
     private ResultActions ai(Resume resume, String token, String body) throws Exception {
-        return mockMvc.perform(post("/api/resumes/" + resume.getId() + "/ai")
+        return mockMvc.perform(post("/api/resumes/" + resume.getId() + "/chat")
                 .header("Authorization", token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body));
     }
 
     @Test
-    void appWideCapReturns503ButCachedAnswersStillWork() throws Exception {
+    void appWideCapReturns503ForChatAndNewSummaries() throws Exception {
         fakeAi.configured = true;
         fakeAi.fail = false;
-        fakeAi.reply = "{\"items\":[\"Q1\"]}";
+        fakeAi.reply = "ok";
 
         User user = userRepository.save(new User("cap-" + UUID.randomUUID() + "@example.com", "hash"));
         Resume resume = resumeRepository.save(new Resume(user, "cv.pdf", "PDF", "Alex\nSKILLS\nJava"));
         String token = "Bearer " + jwtService.generateToken(user);
 
-        // one real call first, so we have a cached answer
-        ai(resume, token, "{\"action\":\"INTERVIEW_QUESTIONS\"}").andExpect(status().isOk());
+        // one real call first
+        ai(resume, token, "{\"message\":\"hi\"}").andExpect(status().isOk());
 
         // other users use up the rest of today's app-wide budget
         var startOfToday = LocalDate.now(ZoneId.systemDefault()).atStartOfDay(ZoneId.systemDefault()).toInstant();
@@ -74,23 +74,24 @@ class AiAppCapIntegrationTest {
         int callsBefore = fakeAi.calls;
 
         // our user has only used 1 of 10, but the app cap is reached
-        ai(resume, token, "{\"action\":\"REWRITE_WEAK_POINTS\"}")
+        ai(resume, token, "{\"message\":\"hi again\"}")
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.status").value(503))
                 .andExpect(jsonPath("$.message").value("AI service not available right now"));
         assertEquals(callsBefore, fakeAi.calls);
 
-        // the cached answer is still served
-        ai(resume, token, "{\"action\":\"INTERVIEW_QUESTIONS\"}")
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.items[0]").value("Q1"));
+        // a summary that isn't saved yet is refused too
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .get("/api/resumes/" + resume.getId() + "/summary").header("Authorization", token))
+                .andExpect(status().isServiceUnavailable());
+        assertEquals(callsBefore, fakeAi.calls);
     }
 
     @Test
     void userLimitIs429EvenWhenAppHasBudget() throws Exception {
         fakeAi.configured = true;
         fakeAi.fail = false;
-        fakeAi.reply = "{\"items\":[\"Q1\"]}";
+        fakeAi.reply = "ok";
         User user = userRepository.save(new User("cap-user-" + UUID.randomUUID() + "@example.com", "hash"));
         Resume resume = resumeRepository.save(new Resume(user, "cv.pdf", "PDF", "Alex\nSKILLS\nJava"));
         List<AiUsage> rows = new ArrayList<>();
@@ -99,7 +100,7 @@ class AiAppCapIntegrationTest {
         }
         usageRepository.saveAll(rows);
 
-        ai(resume, "Bearer " + jwtService.generateToken(user), "{\"action\":\"INTERVIEW_QUESTIONS\"}")
+        ai(resume, "Bearer " + jwtService.generateToken(user), "{\"message\":\"hi\"}")
                 .andExpect(status().isTooManyRequests())
                 .andExpect(jsonPath("$.message").value("Daily AI limit reached"));
     }
