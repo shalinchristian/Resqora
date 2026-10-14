@@ -20,8 +20,8 @@ import java.util.TreeMap;
 
 /**
  * Reads PDF text page by page in reading order.
- * Two-column layouts (sidebar templates) are detected by a vertical gutter with no glyphs,
- * and each column is read top to bottom: left column first, then right.
+ * Multi-column layouts (sidebar templates, 3-column designs) are detected by vertical gutters with no glyphs,
+ * and each column is read top to bottom, columns left to right.
  */
 @Component
 public class PdfTextExtractor {
@@ -44,20 +44,56 @@ public class PdfTextExtractor {
         PDPage page = document.getPage(pageIndex);
         List<TextPosition> glyphs = collectGlyphs(document, pageIndex + 1);
         PDRectangle box = page.getCropBox();
-        Float gutter = findGutter(glyphs, box.getWidth());
-        if (gutter == null) {
+        List<Float> gutters = findGutters(glyphs, box.getWidth());
+        if (gutters.isEmpty()) {
             PDFTextStripper stripper = new PDFTextStripper();
             stripper.setSortByPosition(true);
             stripper.setStartPage(pageIndex + 1);
             stripper.setEndPage(pageIndex + 1);
             return stripper.getText(document);
         }
+        // one region per column, read left to right
         PDFTextStripperByArea byArea = new PDFTextStripperByArea();
         byArea.setSortByPosition(true);
-        byArea.addRegion("left", new Rectangle2D.Float(0, 0, gutter, box.getHeight()));
-        byArea.addRegion("right", new Rectangle2D.Float(gutter, 0, box.getWidth() - gutter, box.getHeight()));
+        List<Float> edges = new ArrayList<>();
+        edges.add(0f);
+        edges.addAll(gutters);
+        edges.add(box.getWidth());
+        for (int column = 0; column + 1 < edges.size(); column++) {
+            byArea.addRegion("c" + column, new Rectangle2D.Float(edges.get(column), 0,
+                    edges.get(column + 1) - edges.get(column), box.getHeight()));
+        }
         byArea.extractRegions(page);
-        return byArea.getTextForRegion("left") + System.lineSeparator() + byArea.getTextForRegion("right");
+        StringBuilder text = new StringBuilder();
+        for (int column = 0; column + 1 < edges.size(); column++) {
+            text.append(byArea.getTextForRegion("c" + column)).append(System.lineSeparator());
+        }
+        return text.toString();
+    }
+
+    /**
+     * All column gutters on the page, left to right (empty for a single-column page).
+     * Recursive cut: find one gutter, then look for further gutters inside each side,
+     * so 3-column and sidebar + 2-column layouts are split too.
+     */
+    static List<Float> findGutters(List<TextPosition> glyphs, float pageWidth) {
+        List<Float> gutters = new ArrayList<>();
+        cut(glyphs, 0, pageWidth, 40, gutters);
+        gutters.sort(Float::compare);
+        return gutters;
+    }
+
+    private static void cut(List<TextPosition> glyphs, float from, float to, int minGlyphs, List<Float> gutters) {
+        List<TextPosition> inside = glyphs.stream()
+                .filter(glyph -> glyph.getXDirAdj() >= from && glyph.getXDirAdj() < to)
+                .toList();
+        Float gutter = findGutter(inside, from, to, minGlyphs);
+        if (gutter == null) {
+            return;
+        }
+        gutters.add(gutter);
+        cut(inside, from, gutter, 15, gutters);
+        cut(inside, gutter, to, 15, gutters);
     }
 
     private List<TextPosition> collectGlyphs(PDDocument document, int pageNumber) throws IOException {
@@ -78,47 +114,56 @@ public class PdfTextExtractor {
 
     /**
      * Returns the x of a column gutter, or null for a single-column page.
-     * A gutter is the widest x-band in the middle 20-80% of the page that no glyph touches,
+     * A gutter is the widest passing x-band in the middle 20-80% of the page that no glyph touches,
      * and the page must have rows with text only on the left and rows with text only on the right
      * (so right-aligned dates on a single-column resume are not mistaken for a second column).
      */
     static Float findGutter(List<TextPosition> glyphs, float pageWidth) {
-        if (glyphs.size() < 40 || pageWidth <= 0) {
+        return findGutter(glyphs, 0, pageWidth, 40);
+    }
+
+    // the same test inside the x-range [left, right) of the page
+    static Float findGutter(List<TextPosition> glyphs, float left, float right, int minGlyphs) {
+        float pageWidth = right - left;
+        if (glyphs.size() < minGlyphs || pageWidth <= 0) {
             return null;
         }
         int width = (int) Math.ceil(pageWidth);
         boolean[] used = new boolean[width + 1];
         for (TextPosition glyph : glyphs) {
-            int from = Math.max(0, (int) Math.floor(glyph.getXDirAdj()));
-            int to = Math.min(width, (int) Math.ceil(glyph.getXDirAdj() + glyph.getWidthDirAdj()));
+            int from = Math.max(0, (int) Math.floor(glyph.getXDirAdj() - left));
+            int to = Math.min(width, (int) Math.ceil(glyph.getXDirAdj() - left + glyph.getWidthDirAdj()));
             for (int x = from; x <= to; x++) {
                 used[x] = true;
             }
         }
-        int bestStart = -1;
-        int bestLength = 0;
+        // every empty band in the middle 20-80%, widest first; the first one that passes the column test wins
+        List<int[]> bands = new ArrayList<>();
         int runStart = -1;
         int low = (int) (width * 0.2);
         int high = (int) (width * 0.8);
-        for (int x = low; x <= high; x++) {
-            if (!used[x]) {
-                if (runStart < 0) {
-                    runStart = x;
+        for (int x = low; x <= high + 1; x++) {
+            boolean free = x <= high && !used[x];
+            if (free && runStart < 0) {
+                runStart = x;
+            } else if (!free && runStart >= 0) {
+                if (x - runStart >= MIN_GUTTER_WIDTH) {
+                    bands.add(new int[] {runStart, x - runStart});
                 }
-                int length = x - runStart + 1;
-                if (length > bestLength) {
-                    bestLength = length;
-                    bestStart = runStart;
-                }
-            } else {
                 runStart = -1;
             }
         }
-        if (bestLength < MIN_GUTTER_WIDTH) {
-            return null;
+        bands.sort((first, second) -> Integer.compare(second[1], first[1]));
+        for (int[] band : bands) {
+            float gutter = left + band[0] + band[1] / 2f;
+            if (isColumnGutter(glyphs, gutter)) {
+                return gutter;
+            }
         }
-        float gutter = bestStart + bestLength / 2f;
+        return null;
+    }
 
+    private static boolean isColumnGutter(List<TextPosition> glyphs, float gutter) {
         // rows keyed by rounded baseline: which sides have text?
         Map<Integer, int[]> rows = new TreeMap<>();
         for (TextPosition glyph : glyphs) {
@@ -137,7 +182,6 @@ public class PdfTextExtractor {
         // right-aligned dates on a one-column resume: few right-side glyphs and no right-only rows
         double leftShare = glyphs.stream().filter(glyph -> glyph.getXDirAdj() < gutter).count() / (double) glyphs.size();
         boolean bothSidesSubstantial = leftShare >= 0.1 && leftShare <= 0.75;
-        return leftOnly >= 1 && rightOnly >= 1 && leftOnly + rightOnly >= MIN_ONE_SIDED_ROWS + 1 && bothSidesSubstantial
-                ? gutter : null;
+        return leftOnly >= 1 && rightOnly >= 1 && leftOnly + rightOnly >= MIN_ONE_SIDED_ROWS + 1 && bothSidesSubstantial;
     }
 }

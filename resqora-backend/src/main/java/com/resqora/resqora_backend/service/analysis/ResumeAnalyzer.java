@@ -68,8 +68,25 @@ public class ResumeAnalyzer {
                 .collect(java.util.stream.Collectors.joining(" | "));
     }
 
+    public static final String LAYOUT_CATEGORY = "Layout";
+    public static final String UNREADABLE_LAYOUT_MESSAGE = "We couldn't read this resume's layout reliably, "
+            + "so the score may be inaccurate. Try a simple single-column PDF or DOCX.";
+    static final int UNREADABLE_MIN_CHARACTERS = 300;
+
     public AnalysisResult analyze(ParsedResume resume) {
+        return analyze(resume, null);
+    }
+
+    /**
+     * Same scoring; with the extracted text it also checks extraction quality. Plenty of text but
+     * 3 or more of skills/education/experience/projects empty means the layout was not understood,
+     * so a "Layout" WARNING goes first (the score is still returned, status codes unchanged).
+     */
+    public AnalysisResult analyze(ParsedResume resume, String extractedText) {
         List<AnalysisFinding> findings = new ArrayList<>();
+        if (looksUnreadable(resume, extractedText)) {
+            findings.add(finding(LAYOUT_CATEGORY, "WARNING", UNREADABLE_LAYOUT_MESSAGE));
+        }
         int completenessScore = scoreCompleteness(resume, findings);
         int skillsScore = scoreSkills(resume, findings);
         int projectsScore = scoreProjects(resume, findings);
@@ -87,6 +104,20 @@ public class ResumeAnalyzer {
                 clamp(experienceScore),
                 clamp(educationScore),
                 findings);
+    }
+
+    static boolean looksUnreadable(ParsedResume resume, String extractedText) {
+        if (resume == null || extractedText == null) {
+            return false;
+        }
+        long visible = extractedText.codePoints().filter(c -> !Character.isWhitespace(c)).count();
+        int emptyCore = (isEmpty(resume.skills()) ? 1 : 0) + (isEmpty(resume.education()) ? 1 : 0)
+                + (isEmpty(resume.experience()) ? 1 : 0) + (isEmpty(resume.projects()) ? 1 : 0);
+        return visible >= UNREADABLE_MIN_CHARACTERS && emptyCore >= 3;
+    }
+
+    private static boolean isEmpty(List<?> items) {
+        return items == null || items.isEmpty();
     }
 
     private int scoreCompleteness(ParsedResume resume, List<AnalysisFinding> findings) {

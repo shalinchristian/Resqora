@@ -5,7 +5,12 @@ import com.resqora.resqora_backend.dto.resume.ResumeUploadResponse;
 import com.resqora.resqora_backend.model.analysis.AnalysisResult;
 import com.resqora.resqora_backend.model.resume.ParsedResume;
 import com.resqora.resqora_backend.service.ResumeService;
+import com.resqora.resqora_backend.entity.Resume;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import java.nio.charset.StandardCharsets;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -53,6 +58,20 @@ public class ResumeController {
             @PathVariable Long resumeId,
             Authentication authentication) {
         return resumeService.getParsedResume(resumeId, authentication);
+    }
+
+    // Original upload for the preview. Only PDF/DOCX content types, never sniffed, shown inline.
+    @GetMapping("/{resumeId}/file")
+    public ResponseEntity<byte[]> getFile(
+            @PathVariable Long resumeId,
+            Authentication authentication) {
+        Resume resume = resumeService.getOwnedFile(resumeId, authentication);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(resume.getContentType()))
+                .header("X-Content-Type-Options", "nosniff")
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline()
+                        .filename(resume.getOriginalFileName(), StandardCharsets.UTF_8).build().toString())
+                .body(resume.getFileData());
     }
 
     @GetMapping("/{resumeId}/analysis")

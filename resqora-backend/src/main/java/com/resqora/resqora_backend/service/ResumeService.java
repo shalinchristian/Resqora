@@ -1,5 +1,6 @@
 package com.resqora.resqora_backend.service;
 
+import com.resqora.resqora_backend.demo.DemoAccountGuard;
 import com.resqora.resqora_backend.dto.resume.ResumeListResponse;
 import com.resqora.resqora_backend.dto.resume.ResumeSummary;
 import com.resqora.resqora_backend.dto.resume.ResumeUploadResponse;
@@ -23,6 +24,7 @@ import com.resqora.resqora_backend.service.parser.ResumeParser;
 import com.resqora.resqora_backend.service.analysis.ResumeAnalyzer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -37,6 +39,9 @@ import java.util.Locale;
 @Service
 public class ResumeService {
     public static final int MAX_RESUMES_PER_USER = 5;
+    public static final String CONTENT_TYPE_PDF = "application/pdf";
+    public static final String CONTENT_TYPE_DOCX =
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     private static final Logger log = LoggerFactory.getLogger(ResumeService.class);
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
@@ -47,7 +52,9 @@ public class ResumeService {
     private final ResumeAnalyzer resumeAnalyzer;
     private final ResumeAnalysisRepository resumeAnalysisRepository;
     private final TransactionTemplate transactionTemplate;
+    private final DemoAccountGuard demoAccountGuard;
 
+    // without the demo guard (unit tests): demo mode off
     public ResumeService(
             DocumentTextExtractionService documentTextExtractionService,
             ResumeRepository resumeRepository,
@@ -56,6 +63,21 @@ public class ResumeService {
             ResumeAnalyzer resumeAnalyzer,
             ResumeAnalysisRepository resumeAnalysisRepository,
             TransactionTemplate transactionTemplate) {
+        this(documentTextExtractionService, resumeRepository, userRepository, resumeParser, resumeAnalyzer,
+                resumeAnalysisRepository, transactionTemplate, new DemoAccountGuard(false));
+    }
+
+    @Autowired
+    public ResumeService(
+            DocumentTextExtractionService documentTextExtractionService,
+            ResumeRepository resumeRepository,
+            UserRepository userRepository,
+            ResumeParser resumeParser,
+            ResumeAnalyzer resumeAnalyzer,
+            ResumeAnalysisRepository resumeAnalysisRepository,
+            TransactionTemplate transactionTemplate,
+            DemoAccountGuard demoAccountGuard) {
+        this.demoAccountGuard = demoAccountGuard;
         this.documentTextExtractionService = documentTextExtractionService;
         this.resumeRepository = resumeRepository;
         this.userRepository = userRepository;
@@ -72,7 +94,7 @@ public class ResumeService {
         }
 
         String fileName = file.getOriginalFilename();
-        if (file.getSize() > 5 * 1024 * 1024) {
+        if (file.getSize() > Resume.MAX_FILE_BYTES) {
             throw new FileTooLargeException();
         }
         if (fileName == null ||
@@ -93,6 +115,14 @@ public class ResumeService {
 
         String extractedText = documentTextExtractionService.extract(file);
         String documentType = fileName.substring(fileName.lastIndexOf('.') + 1).toUpperCase(Locale.ROOT);
+        // keep the original bytes for the preview; content type is fixed by the (validated) extension
+        byte[] fileBytes;
+        try {
+            fileBytes = file.getBytes();
+        } catch (java.io.IOException exception) {
+            throw new IllegalArgumentException("Could not read the uploaded file");
+        }
+        String contentType = "PDF".equals(documentType) ? CONTENT_TYPE_PDF : CONTENT_TYPE_DOCX;
         rejectIfNoText(extractedText, documentType);
         // lock the user row, re-count and insert in one transaction: parallel uploads can't pass 5 slots
         Resume savedResume = transactionTemplate.execute(status -> {
@@ -101,7 +131,7 @@ public class ResumeService {
             if (resumeRepository.countByUserId(userId) >= MAX_RESUMES_PER_USER) {
                 throw new ResumeLimitExceededException(MAX_RESUMES_PER_USER);
             }
-            return resumeRepository.save(new Resume(user, fileName, documentType, extractedText));
+            return resumeRepository.save(new Resume(user, fileName, documentType, extractedText, fileBytes, contentType));
         });
 
         // Analyse right away so the dashboard shows a score immediately.
@@ -119,7 +149,6 @@ public class ResumeService {
             "Resume uploaded successfully",
             fileName,
             documentType,
-            extractedText,
             overallScore);
     }
 
@@ -150,13 +179,15 @@ public class ResumeService {
                         resume.getDocumentType(),
                         resume.getCreatedAt(),
                         analyses.containsKey(resume.getId()) ? analyses.get(resume.getId()).getOverallScore() : null,
-                        analyses.containsKey(resume.getId()) ? topFinding(analyses.get(resume.getId())) : null))
+                        analyses.containsKey(resume.getId()) ? topFinding(analyses.get(resume.getId())) : null,
+                        resume.hasFile()))
                 .toList();
         return new ResumeListResponse(resumes.size(), MAX_RESUMES_PER_USER, resumes);
     }
 
     public void deleteResume(Long resumeId, Authentication authentication) {
         Resume resume = findOwnedResume(resumeId, authentication);
+        demoAccountGuard.rejectIfDemo(resume.getUser());
         resumeRepository.delete(resume);
     }
 
@@ -180,7 +211,7 @@ public class ResumeService {
 
     private AnalysisResult analyzeAndSave(Resume resume) {
         ParsedResume parsedResume = resumeParser.parse(resume.getExtractedText());
-        AnalysisResult result = resumeAnalyzer.analyze(parsedResume);
+        AnalysisResult result = resumeAnalyzer.analyze(parsedResume, resume.getExtractedText());
         resumeAnalysisRepository.save(new ResumeAnalysis(
                 resume,
                 result.overallScore(),
@@ -193,7 +224,8 @@ public class ResumeService {
         return result;
     }
 
-    // From the saved findings, no re-analysis: a line-specific WARNING first, else the first WARNING, else null
+    // From the saved findings, no re-analysis: the unreadable-layout warning first,
+    // then a line-specific WARNING, else the first WARNING, else null
     static String topFinding(ResumeAnalysis saved) {
         List<AnalysisFinding> findings;
         try {
@@ -202,8 +234,9 @@ public class ResumeService {
             return null;
         }
         return findings.stream()
-                .filter(f -> "WARNING".equals(f.type()) && f.line() != null)
+                .filter(f -> ResumeAnalyzer.LAYOUT_CATEGORY.equals(f.category()))
                 .findFirst()
+                .or(() -> findings.stream().filter(f -> "WARNING".equals(f.type()) && f.line() != null).findFirst())
                 .or(() -> findings.stream().filter(f -> "WARNING".equals(f.type())).findFirst())
                 .map(AnalysisFinding::message)
                 .orElse(null);
@@ -222,7 +255,17 @@ public class ResumeService {
                 findings);
     }
 
-    private Resume findOwnedResume(Long resumeId, Authentication authentication) {
+    // Original file for the preview; 404 if not owned, not stored, or not one of the two allowed types
+    public Resume getOwnedFile(Long resumeId, Authentication authentication) {
+        Resume resume = findOwnedResume(resumeId, authentication);
+        if (!resume.hasFile() || !(CONTENT_TYPE_PDF.equals(resume.getContentType())
+                || CONTENT_TYPE_DOCX.equals(resume.getContentType()))) {
+            throw new ResumeNotFoundException();
+        }
+        return resume;
+    }
+
+    public Resume findOwnedResume(Long resumeId, Authentication authentication) {
         Long authenticatedUserId = (Long) authentication.getPrincipal();
         Resume resume = resumeRepository.findById(resumeId)
                 .orElseThrow(ResumeNotFoundException::new);

@@ -9,5 +9,7 @@ public record ResumeSummary(
         Instant uploadedAt,
         Integer overallScore,
         // most important saved finding (null if not analysed yet or nothing to fix)
-        String topFinding) {
+        String topFinding,
+        // true when the original file is stored (GET /api/resumes/{id}/file works)
+        boolean hasFile) {
 }

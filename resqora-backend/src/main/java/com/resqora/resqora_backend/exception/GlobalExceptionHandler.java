@@ -4,7 +4,9 @@ import com.resqora.resqora_backend.dto.ErrorResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import tools.jackson.databind.exc.InvalidFormatException;
 import org.springframework.web.HttpMediaTypeNotAcceptableException;
 import org.springframework.web.multipart.MultipartException;
 import org.springframework.http.ResponseEntity;
@@ -53,7 +55,29 @@ public class GlobalExceptionHandler {
     // Body is not valid JSON (or missing)
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ErrorResponse> handleMalformedJson(HttpMessageNotReadableException exception) {
+        // valid JSON but an unknown enum value, e.g. {"action":"FOO"}: name the allowed values
+        for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+            if (cause instanceof InvalidFormatException invalid && invalid.getTargetType() != null
+                    && invalid.getTargetType().isEnum()) {
+                String allowed = java.util.Arrays.stream(invalid.getTargetType().getEnumConstants())
+                        .map(String::valueOf).collect(Collectors.joining(", "));
+                String field = invalid.getPath().isEmpty() ? "value" : invalid.getPath().get(invalid.getPath().size() - 1).getPropertyName();
+                return errorResponse(HttpStatus.BAD_REQUEST,
+                        "Invalid " + field + " '" + invalid.getValue() + "'. Allowed values: " + allowed);
+            }
+        }
         return errorResponse(HttpStatus.BAD_REQUEST, "Malformed JSON request");
+    }
+
+    // 403, not 401: the token is fine, only the typed password is wrong, so the frontend must not log out
+    @ExceptionHandler(IncorrectPasswordException.class)
+    public ResponseEntity<ErrorResponse> handleIncorrectPassword(IncorrectPasswordException exception) {
+        return errorResponse(HttpStatus.FORBIDDEN, exception.getMessage());
+    }
+
+    @ExceptionHandler(DemoAccountReadOnlyException.class)
+    public ResponseEntity<ErrorResponse> handleDemoReadOnly(DemoAccountReadOnlyException exception) {
+        return errorResponse(HttpStatus.FORBIDDEN, exception.getMessage());
     }
 
     @ExceptionHandler(AuthenticatedUserNotFoundException.class)
@@ -65,7 +89,10 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(TooManyLoginAttemptsException.class)
     public ResponseEntity<ErrorResponse> handleTooManyLoginAttempts(TooManyLoginAttemptsException exception) {
-        return errorResponse(HttpStatus.TOO_MANY_REQUESTS, exception.getMessage());
+        ErrorResponse body = new ErrorResponse(429, HttpStatus.TOO_MANY_REQUESTS.getReasonPhrase(), exception.getMessage());
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(exception.getRetryAfterSeconds()))
+                .body(body);
     }
 
     @ExceptionHandler(ResumeNotFoundException.class)
@@ -86,7 +113,19 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(AiDailyLimitExceededException.class)
     public ResponseEntity<ErrorResponse> handleAiDailyLimit(AiDailyLimitExceededException exception) {
-        return errorResponse(HttpStatus.TOO_MANY_REQUESTS, exception.getMessage());
+        return tooManyRequests(exception.getMessage(), exception.getRetryAfterSeconds());
+    }
+
+    @ExceptionHandler(TooManyPasswordAttemptsException.class)
+    public ResponseEntity<ErrorResponse> handleTooManyPasswordAttempts(TooManyPasswordAttemptsException exception) {
+        return tooManyRequests(exception.getMessage(), exception.getRetryAfterSeconds());
+    }
+
+    private static ResponseEntity<ErrorResponse> tooManyRequests(String message, long retryAfterSeconds) {
+        ErrorResponse body = new ErrorResponse(429, HttpStatus.TOO_MANY_REQUESTS.getReasonPhrase(), message);
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(retryAfterSeconds))
+                .body(body);
     }
 
     @ExceptionHandler(JobSuggestionsUnavailableException.class)
@@ -102,7 +141,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<ErrorResponse> handleMaxUploadSizeExceeded(
             MaxUploadSizeExceededException exception) {
-        return errorResponse(HttpStatus.CONTENT_TOO_LARGE, "File size must not exceed 5 MB");
+        return errorResponse(HttpStatus.CONTENT_TOO_LARGE, "File size must not exceed 2 MB");
     }
 
     @ExceptionHandler(FileTooLargeException.class)

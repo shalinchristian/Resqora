@@ -16,23 +16,30 @@ import java.util.Map;
 // Calls Google's Gemini REST API (generateContent) with plain HTTP using Spring's RestClient.
 @Component
 public class GeminiAiClient implements AiClient {
-    private static final String BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
+    public static final String DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     private final String apiKey;
     private final String model;
     private final RestClient restClient;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public GeminiAiClient(
             @Value("${resqora.ai.gemini-api-key:}") String apiKey,
-            @Value("${resqora.ai.gemini-model:gemini-3.5-flash-lite}") String model) {
+            @Value("${resqora.ai.gemini-model:gemini-3.5-flash-lite}") String model,
+            @Value("${resqora.ai.gemini-base-url:" + DEFAULT_BASE_URL + "}") String baseUrl) {
         this.apiKey = apiKey;
         this.model = model;
         // Timeouts so a slow AI never hangs our request threads
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(Duration.ofSeconds(5));
         requestFactory.setReadTimeout(Duration.ofSeconds(30));
-        this.restClient = RestClient.builder().baseUrl(BASE_URL).requestFactory(requestFactory).build();
+        this.restClient = RestClient.builder().baseUrl(baseUrl == null || baseUrl.isBlank() ? DEFAULT_BASE_URL : baseUrl).requestFactory(requestFactory).build();
+    }
+
+    // tests / defaults
+    public GeminiAiClient(String apiKey, String model) {
+        this(apiKey, model, DEFAULT_BASE_URL);
     }
 
     @Override
@@ -41,11 +48,12 @@ public class GeminiAiClient implements AiClient {
     }
 
     @Override
-    public String generateJson(String prompt) {
-        // responseMimeType=application/json asks Gemini to reply with pure JSON (no markdown)
+    public String generateText(String systemInstruction, String prompt) {
+        // Rules go in systemInstruction (not in the user turn), so text inside the data can't replace them
         Map<String, Object> body = Map.of(
-                "contents", List.of(Map.of("parts", List.of(Map.of("text", prompt)))),
-                "generationConfig", Map.of("responseMimeType", "application/json", "temperature", 0.2));
+                "systemInstruction", Map.of("parts", List.of(Map.of("text", systemInstruction))),
+                "contents", List.of(Map.of("role", "user", "parts", List.of(Map.of("text", prompt)))),
+                "generationConfig", Map.of("temperature", 0.3, "maxOutputTokens", 800));
         try {
             String response = restClient.post()
                     .uri("/models/{model}:generateContent", model)
