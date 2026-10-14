@@ -1,0 +1,82 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Inter Variable", system-ui, sans-serif;
+  --font-serif: "IBM Plex Serif", Georgia, serif;
+
+  --color-paper: #fafafa;
+  --color-surface: #ffffff;
+  --color-sunken: #f4f4f5;
+  --color-ink: #09090b;
+  --color-muted: #5f5f68;
+  --color-faint: #6b6b74;
+  --color-line: #e4e4e7;
+  --color-accent: #c2410c;
+  --color-accent-ink: #ffffff;
+  --color-good: #15803d;
+  --color-ok: #b45309;
+  --color-bad: #b91c1c;
+  --color-good-soft: #f0fdf4;
+  --color-ok-soft: #fffbeb;
+  --color-bad-soft: #fef2f2;
+  --glow: rgba(234, 88, 12, 0.10);
+}
+
+/* dark theme colours */
+.dark {
+  color-scheme: dark;
+  --color-paper: #09090b;
+  --color-surface: #111113;
+  --color-sunken: #1a1a1d;
+  --color-ink: #fafafa;
+  --color-muted: #b4b4bc;
+  --color-faint: #80808a;
+  --color-line: #232327;
+  --color-accent: #fb7a32;
+  --color-accent-ink: #0a0a0a;
+  --color-good: #4ade80;
+  --color-ok: #fbbf24;
+  --color-bad: #f87171;
+  --color-good-soft: #0f2318;
+  --color-ok-soft: #271d08;
+  --color-bad-soft: #2a1213;
+  --glow: rgba(251, 122, 50, 0.13);
+}
+
+body {
+  @apply bg-paper text-ink font-sans antialiased;
+  font-feature-settings: "cv11", "ss01";
+}
+input, textarea { font-size: 16px; }
+:focus:not(:focus-visible) { outline: none; }
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+::selection { background: color-mix(in srgb, var(--color-accent) 30%, transparent); }
+
+.grid-bg {
+  background-image:
+    linear-gradient(to right, var(--color-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--color-line) 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.fade-up { animation: fade-up .28s cubic-bezier(.2,.7,.2,1) both; }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+.toast { animation: toast-in .25s ease-out both; }
+
+.spotlight {
+  background-image: radial-gradient(22rem circle at var(--mx, 50%) var(--my, -20%), var(--glow), transparent 60%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
