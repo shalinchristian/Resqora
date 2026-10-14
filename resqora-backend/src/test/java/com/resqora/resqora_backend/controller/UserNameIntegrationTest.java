@@ -89,7 +89,7 @@ class UserNameIntegrationTest {
     }
 
     @Test
-    void userWithoutNameGetsEmailAsNameInLoginAndMe() throws Exception {
+    void userWithoutNameGetsNullNameInLoginAndMe() throws Exception {
         // simulates a user registered before names existed (name column is NULL)
         String email = email();
         User user = userRepository.save(new User(email, passwordEncoder.encode("password123")));
@@ -98,10 +98,10 @@ class UserNameIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"" + email + "\",\"password\":\"password123\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.name").value(email));
+                .andExpect(jsonPath("$.name").value(org.hamcrest.Matchers.nullValue()));
 
         mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + jwtService.generateToken(user)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.name").value(email));
+                .andExpect(jsonPath("$.name").value(org.hamcrest.Matchers.nullValue()));
     }
 }

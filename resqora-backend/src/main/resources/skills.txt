@@ -1,0 +1,220 @@
+# Resqora skill dictionary: one skill per line.
+# Format: Canonical Name | alias | alias ...   (case-insensitive, except names of 1-2 characters such as C, R, Go, JS, AI, which must match the case written here)
+# Used by the resume parser (to merge spellings), the analysis skill count and the job matcher.
+# Languages
+Java
+Python
+JavaScript | js | JS | ecmascript | es6
+TypeScript | TS
+C
+C++ | cpp
+C# | csharp | c sharp
+Go | golang
+Kotlin
+PHP
+Ruby
+Swift
+Scala
+Rust
+R
+Dart
+Perl
+Objective-C | objective c
+MATLAB
+Groovy
+Elixir
+Haskell
+Lua
+Shell Scripting | shell script | shell scripting
+Bash
+PowerShell
+SQL
+PL/SQL | plsql
+HTML | html5
+CSS | css3
+Sass | scss
+Solidity
+Assembly
+VB.NET | vb net
+COBOL
+# Backend frameworks
+Spring Boot | springboot | spring-boot
+Spring
+Spring Security
+Spring MVC
+Spring Data JPA | spring data
+Spring Cloud
+Hibernate
+JPA
+JDBC
+Servlets | servlet
+JSP
+Maven
+Gradle
+JUnit | junit5
+Mockito
+TestNG
+Selenium
+Cucumber
+Node.js | nodejs | node js | node
+Express | express.js | expressjs
+NestJS | nest.js
+Django
+Flask
+FastAPI
+.NET | dotnet | .net core
+ASP.NET | asp.net core | asp.net mvc
+Laravel
+Ruby on Rails | rails
+GraphQL
+REST | rest api | restful | rest apis | restful api
+gRPC
+SOAP
+Microservices | microservice
+WebSockets | websocket
+# Frontend
+React | reactjs | react.js
+Angular | angularjs
+Vue | vue.js | vuejs
+Svelte
+Next.js | nextjs
+Nuxt.js | nuxt
+Redux
+jQuery
+Bootstrap
+Tailwind | tailwindcss | tailwind css
+Material UI | mui
+Webpack
+Vite
+Babel
+React Native
+Flutter
+Ionic
+Electron
+Three.js | threejs
+D3.js | D3
+Jest
+Cypress
+Playwright
+Storybook
+# Databases
+PostgreSQL | postgres | postgres sql | postgresql
+MySQL
+MongoDB | mongo
+Redis
+Oracle | oracle db
+SQLite
+SQL Server | mssql | microsoft sql server
+MariaDB
+Cassandra
+DynamoDB
+Firebase
+Supabase
+Elasticsearch | elastic search
+Neo4j
+Snowflake
+BigQuery
+H2
+Flyway
+Liquibase
+# Cloud and DevOps
+Docker
+Kubernetes | k8s
+AWS | amazon web services
+Azure | microsoft azure
+GCP | google cloud | google cloud platform
+Heroku
+Vercel
+Netlify
+Jenkins
+GitHub Actions
+GitLab CI
+CI/CD | ci cd | cicd
+Terraform
+Ansible
+Helm
+Nginx
+Apache
+Tomcat
+Linux | ubuntu
+Unix
+Git
+GitHub
+GitLab
+Bitbucket
+Prometheus
+Grafana
+ELK
+Kafka | apache kafka
+RabbitMQ
+ActiveMQ
+Serverless
+Lambda | aws lambda
+EC2
+S3
+OpenShift
+# Security and APIs
+JWT
+OAuth | oauth2 | oauth 2.0
+OpenID Connect | oidc
+Keycloak
+Postman
+Swagger | openapi
+SonarQube
+# Data and AI
+Machine Learning | ML
+Deep Learning
+Artificial Intelligence | AI
+NLP | natural language processing
+Computer Vision
+LLM | llms | large language models
+Generative AI | genai
+Prompt Engineering
+LangChain
+TensorFlow
+PyTorch
+Keras
+Scikit-learn | sklearn | scikit learn
+Pandas
+NumPy
+SciPy
+Matplotlib
+Seaborn
+OpenCV
+Hugging Face | huggingface
+Spark | apache spark | pyspark
+Hadoop
+Airflow | apache airflow
+Databricks
+ETL
+Data Analysis
+Data Visualization
+Statistics
+Power BI | powerbi
+Tableau
+Excel | ms excel | microsoft excel
+Jupyter
+# Practices and tools
+Agile
+Scrum
+Kanban
+Jira
+Confluence
+TDD
+OOP | object oriented programming
+Data Structures
+Algorithms
+Design Patterns
+System Design
+Multithreading
+Unit Testing
+Figma
+Adobe XD
+Photoshop
+UI/UX | ui ux | ux design | ui design
+Android
+iOS
+Blockchain
+Web3
+Networking
+Cyber Security | cybersecurity

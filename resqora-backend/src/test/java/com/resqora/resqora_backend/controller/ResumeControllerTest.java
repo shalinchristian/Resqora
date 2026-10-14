@@ -36,6 +36,7 @@ import static org.mockito.ArgumentMatchers.any;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class ResumeControllerTest {
@@ -52,13 +53,13 @@ class ResumeControllerTest {
         ResumeParser resumeParser = mock(ResumeParser.class);
         ResumeAnalyzer resumeAnalyzer = mock(ResumeAnalyzer.class);
         User user = mock(User.class);
-        when(userRepository.findById(1L)).thenReturn(java.util.Optional.of(user));
+        when(userRepository.findByIdForUpdate(1L)).thenReturn(java.util.Optional.of(user));
         when(resumeRepository.save(any(Resume.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(resumeRepository.findById(3L)).thenReturn(java.util.Optional.empty());
         authentication = new UsernamePasswordAuthenticationToken(1L, null, List.of());
         mockMvc = MockMvcBuilders
             .standaloneSetup(new ResumeController(
-                new ResumeService(extractionService, resumeRepository, userRepository, resumeParser, resumeAnalyzer, mock(ResumeAnalysisRepository.class))))
+                new ResumeService(extractionService, resumeRepository, userRepository, resumeParser, resumeAnalyzer, mock(ResumeAnalysisRepository.class), new org.springframework.transaction.support.TransactionTemplate(mock(org.springframework.transaction.PlatformTransactionManager.class)))))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -94,16 +95,17 @@ class ResumeControllerTest {
                 "file", "resume.pdf", "application/pdf", new byte[5 * 1024 * 1024 + 1]);
 
         mockMvc.perform(multipart("/api/resumes/upload").file(file))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().is(413))
                 .andExpect(jsonPath("$.message").value("File size must not exceed 5 MB"));
     }
 
     @Test
     void acceptsPdfAndReturnsFileName() throws Exception {
-        MockMultipartFile file = new MockMultipartFile("file", "resume.pdf", "application/pdf", createPdf("Resume text"));
+        MockMultipartFile file = new MockMultipartFile("file", "resume.pdf", "application/pdf", createPdf("Resume text for Ada Lovelace, engineer"));
 
         mockMvc.perform(multipart("/api/resumes/upload").file(file).principal(authentication))
-                .andExpect(status().isOk())
+                .andExpect(status().isCreated())
+                .andExpect(header().string("Location", org.hamcrest.Matchers.endsWith("/analysis")))
                 .andExpect(jsonPath("$.fileName").value("resume.pdf"))
                 .andExpect(jsonPath("$.extractedText").value(org.hamcrest.Matchers.containsString("Resume text")));
     }

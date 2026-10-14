@@ -23,7 +23,13 @@ class JwtAuthenticationFilterTest {
     private static final SecretKey SIGNING_KEY = Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8));
 
     private final JwtAuthenticationFilter filter = new JwtAuthenticationFilter(
-            new JwtService(SECRET, 3_600_000));
+            new JwtService(SECRET, 3_600_000), existingUsers());
+
+    private static com.resqora.resqora_backend.repository.UserRepository existingUsers() {
+        var users = org.mockito.Mockito.mock(com.resqora.resqora_backend.repository.UserRepository.class);
+        org.mockito.Mockito.when(users.existsById(org.mockito.ArgumentMatchers.anyLong())).thenReturn(true);
+        return users;
+    }
 
     @AfterEach
     void clearSecurityContext() {

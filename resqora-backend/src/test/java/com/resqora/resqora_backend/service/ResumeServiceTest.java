@@ -35,12 +35,12 @@ class ResumeServiceTest {
         ResumeParser resumeParser = mock(ResumeParser.class);
         ResumeAnalyzer resumeAnalyzer = mock(ResumeAnalyzer.class);
         User user = mock(User.class);
-        when(userRepository.findById(7L)).thenReturn(Optional.of(user));
-        when(extractionService.extract(any())).thenReturn("Extracted resume text");
+        when(userRepository.findByIdForUpdate(7L)).thenReturn(Optional.of(user));
+        when(extractionService.extract(any())).thenReturn("Extracted resume text for Ada Lovelace");
         when(resumeRepository.save(any(Resume.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         ResumeService resumeService = new ResumeService(
-                extractionService, resumeRepository, userRepository, resumeParser, resumeAnalyzer, mock(ResumeAnalysisRepository.class));
+                extractionService, resumeRepository, userRepository, resumeParser, resumeAnalyzer, mock(ResumeAnalysisRepository.class), new org.springframework.transaction.support.TransactionTemplate(mock(org.springframework.transaction.PlatformTransactionManager.class)));
         Authentication authentication = authenticationFor(7L);
         MockMultipartFile file = new MockMultipartFile(
                 "file", "resume.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -54,7 +54,7 @@ class ResumeServiceTest {
         assertEquals(user, savedResume.getUser());
         assertEquals("resume.docx", savedResume.getOriginalFileName());
         assertEquals("DOCX", savedResume.getDocumentType());
-        assertEquals("Extracted resume text", savedResume.getExtractedText());
+        assertEquals("Extracted resume text for Ada Lovelace", savedResume.getExtractedText());
     }
 
     @Test
@@ -76,7 +76,7 @@ class ResumeServiceTest {
         when(resumeParser.parse("stored resume text")).thenReturn(parsedResume);
 
         ResumeService resumeService = new ResumeService(
-                extractionService, resumeRepository, userRepository, resumeParser, resumeAnalyzer, mock(ResumeAnalysisRepository.class));
+                extractionService, resumeRepository, userRepository, resumeParser, resumeAnalyzer, mock(ResumeAnalysisRepository.class), new org.springframework.transaction.support.TransactionTemplate(mock(org.springframework.transaction.PlatformTransactionManager.class)));
 
         assertEquals(parsedResume, resumeService.getParsedResume(9L, authenticationFor(7L)));
         verify(resumeParser).parse("stored resume text");
@@ -103,7 +103,7 @@ class ResumeServiceTest {
         when(resumeAnalyzer.analyze(parsedResume)).thenReturn(analysisResult);
 
         ResumeService resumeService = new ResumeService(
-                extractionService, resumeRepository, userRepository, resumeParser, resumeAnalyzer, mock(ResumeAnalysisRepository.class));
+                extractionService, resumeRepository, userRepository, resumeParser, resumeAnalyzer, mock(ResumeAnalysisRepository.class), new org.springframework.transaction.support.TransactionTemplate(mock(org.springframework.transaction.PlatformTransactionManager.class)));
 
         assertEquals(analysisResult, resumeService.getAnalysis(9L, authenticationFor(7L)));
         verify(resumeParser).parse("stored resume text");
@@ -124,7 +124,7 @@ class ResumeServiceTest {
         when(owner.getId()).thenReturn(99L);
 
         ResumeService resumeService = new ResumeService(
-                extractionService, resumeRepository, userRepository, resumeParser, resumeAnalyzer, mock(ResumeAnalysisRepository.class));
+                extractionService, resumeRepository, userRepository, resumeParser, resumeAnalyzer, mock(ResumeAnalysisRepository.class), new org.springframework.transaction.support.TransactionTemplate(mock(org.springframework.transaction.PlatformTransactionManager.class)));
 
         assertThrows(ResumeNotFoundException.class,
                 () -> resumeService.getParsedResume(9L, authenticationFor(7L)));
@@ -141,7 +141,7 @@ class ResumeServiceTest {
         when(resumeRepository.findById(9L)).thenReturn(Optional.empty());
 
         ResumeService resumeService = new ResumeService(
-                extractionService, resumeRepository, userRepository, resumeParser, resumeAnalyzer, mock(ResumeAnalysisRepository.class));
+                extractionService, resumeRepository, userRepository, resumeParser, resumeAnalyzer, mock(ResumeAnalysisRepository.class), new org.springframework.transaction.support.TransactionTemplate(mock(org.springframework.transaction.PlatformTransactionManager.class)));
 
         assertThrows(ResumeNotFoundException.class,
                 () -> resumeService.getParsedResume(9L, authenticationFor(7L)));
@@ -170,7 +170,7 @@ class ResumeServiceTest {
 
         ResumeService resumeService = new ResumeService(
                 mock(DocumentTextExtractionService.class), resumeRepository, mock(UserRepository.class),
-                resumeParser, resumeAnalyzer, analysisRepository);
+                resumeParser, resumeAnalyzer, analysisRepository, new org.springframework.transaction.support.TransactionTemplate(mock(org.springframework.transaction.PlatformTransactionManager.class)));
 
         AnalysisResult result = resumeService.getAnalysis(9L, authenticationFor(7L));
 
@@ -178,5 +178,31 @@ class ResumeServiceTest {
         assertEquals(1, result.findings().size());
         assertEquals("Good skills", result.findings().get(0).message());
         org.mockito.Mockito.verifyNoInteractions(resumeParser, resumeAnalyzer);
+    }
+
+    @Test
+    void uploadStillSucceedsWhenAnalysisFails() {
+        DocumentTextExtractionService extractionService = mock(DocumentTextExtractionService.class);
+        ResumeRepository resumeRepository = mock(ResumeRepository.class);
+        UserRepository userRepository = mock(UserRepository.class);
+        ResumeParser resumeParser = mock(ResumeParser.class);
+        ResumeAnalyzer resumeAnalyzer = mock(ResumeAnalyzer.class);
+        ResumeAnalysisRepository analysisRepository = mock(ResumeAnalysisRepository.class);
+        User user = mock(User.class);
+        MockMultipartFile file = new MockMultipartFile("file", "cv.pdf", "application/pdf", "pdf".getBytes());
+        when(userRepository.findByIdForUpdate(7L)).thenReturn(Optional.of(user));
+        when(extractionService.extract(file)).thenReturn("resume text for Ada Lovelace, engineer");
+        when(resumeRepository.save(any(Resume.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(resumeParser.parse("resume text for Ada Lovelace, engineer")).thenThrow(new IllegalStateException("parser broke"));
+
+        ResumeService resumeService = new ResumeService(
+                extractionService, resumeRepository, userRepository, resumeParser, resumeAnalyzer, analysisRepository, new org.springframework.transaction.support.TransactionTemplate(mock(org.springframework.transaction.PlatformTransactionManager.class)));
+
+        var response = resumeService.uploadResume(file, authenticationFor(7L));
+
+        assertEquals("Resume uploaded successfully", response.message());
+        org.junit.jupiter.api.Assertions.assertNull(response.overallScore());
+        verify(resumeRepository).save(any(Resume.class));
+        verify(analysisRepository, org.mockito.Mockito.never()).save(any());
     }
 }
