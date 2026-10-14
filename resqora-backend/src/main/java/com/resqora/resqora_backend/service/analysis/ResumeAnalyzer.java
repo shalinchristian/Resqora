@@ -13,9 +13,61 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 @Service
 public class ResumeAnalyzer {
+    private static final Set<String> SOFT_SKILLS = Set.of(
+            "communication", "communication skills", "leadership", "teamwork", "team work", "team player",
+            "problem solving", "problem-solving", "critical thinking", "time management", "adaptability",
+            "collaboration", "creativity", "work ethic", "interpersonal skills", "attention to detail",
+            "self-motivated", "hardworking", "hard working", "quick learner", "multitasking", "presentation");
+    private static final Pattern METRIC = Pattern.compile("\\d");
+
+    // Feedback that names the exact entry to fix. Score-neutral; ordered most useful first.
+    private void addLineFindings(ParsedResume resume, List<AnalysisFinding> findings) {
+        if (resume == null) {
+            return;
+        }
+        for (ExperienceEntry entry : resume.experience() == null ? List.<ExperienceEntry>of() : resume.experience()) {
+            String line = entryLine(entry.company(), entry.title(), entry.dates());
+            if (!present(entry.dates())) {
+                findings.add(new AnalysisFinding("Experience", "WARNING",
+                        "Add start and end dates to \"" + line + "\".", line));
+            }
+            if (!present(entry.description())) {
+                findings.add(new AnalysisFinding("Experience", "WARNING",
+                        "Add 1-2 bullet points describing your work at \"" + line + "\".", line));
+            } else if (!METRIC.matcher(entry.description()).find()) {
+                findings.add(new AnalysisFinding("Experience", "WARNING",
+                        "Add a number to a bullet under \"" + line + "\" (users, %, time saved, money).", line));
+            }
+        }
+        for (ProjectEntry project : resume.projects() == null ? List.<ProjectEntry>of() : resume.projects()) {
+            if (present(project.name()) && !present(project.description())) {
+                findings.add(new AnalysisFinding("Projects", "WARNING",
+                        "Add a one-line description under project \"" + project.name() + "\".", project.name()));
+            }
+        }
+        for (EducationEntry entry : resume.education() == null ? List.<EducationEntry>of() : resume.education()) {
+            String line = entryLine(entry.institution(), entry.degree(), null);
+            if (!present(entry.dates()) && present(line)) {
+                findings.add(new AnalysisFinding("Education", "WARNING",
+                        "Add dates to \"" + line + "\".", line));
+            }
+        }
+        if (!present(resume.phone())) {
+            findings.add(new AnalysisFinding("Completeness", "WARNING",
+                    "Add a phone number to your contact line.", null));
+        }
+    }
+
+    private String entryLine(String first, String second, String third) {
+        return java.util.stream.Stream.of(first, second, third)
+                .filter(this::present)
+                .collect(java.util.stream.Collectors.joining(" | "));
+    }
+
     public AnalysisResult analyze(ParsedResume resume) {
         List<AnalysisFinding> findings = new ArrayList<>();
         int completenessScore = scoreCompleteness(resume, findings);
@@ -23,6 +75,7 @@ public class ResumeAnalyzer {
         int projectsScore = scoreProjects(resume, findings);
         int experienceScore = scoreExperience(resume, findings);
         int educationScore = scoreEducation(resume, findings);
+        addLineFindings(resume, findings);
         int overallScore = completenessScore + skillsScore + projectsScore
                 + experienceScore + educationScore;
 
@@ -55,6 +108,7 @@ public class ResumeAnalyzer {
     }
 
     private int scoreSkills(ParsedResume resume, List<AnalysisFinding> findings) {
+        // soft skills ("Communication", "Leadership") are listed but do not count toward the skill score
         int count = distinctSkillCount(resume == null ? List.of() : resume.skills());
         int score = count == 0 ? 0 : count <= 4 ? 8 : count <= 9 ? 14 : 20;
         String message = count == 0
@@ -114,7 +168,7 @@ public class ResumeAnalyzer {
     private int distinctSkillCount(List<String> skills) {
         Set<String> distinctSkills = new HashSet<>();
         for (String skill : skills) {
-            if (present(skill)) {
+            if (present(skill) && !SOFT_SKILLS.contains(skill.trim().toLowerCase(Locale.ROOT))) {
                 distinctSkills.add(skill.trim().toLowerCase(Locale.ROOT));
             }
         }

@@ -4,6 +4,7 @@ import com.resqora.resqora_backend.model.resume.EducationEntry;
 import com.resqora.resqora_backend.model.resume.ExperienceEntry;
 import com.resqora.resqora_backend.model.resume.ParsedResume;
 import com.resqora.resqora_backend.model.resume.ProjectEntry;
+import com.resqora.resqora_backend.service.skills.SkillDictionary;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -24,13 +25,25 @@ public class ResumeParser {
             "(?<!\\d)(?:\\+?\\d[\\d ()-]{7,}\\d)(?!\\d)");
     private static final Pattern LABELED_LOCATION_PATTERN = Pattern.compile(
             "(?i)^(?:location|address|based in)\\s*[:|-]\\s*(.+)$");
+    // Month names in English (incl. "Sept") and Hindi, so "मार्च 2017" is a date too
+    private static final String MONTH = "(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|"
+            + "aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|"
+            + "जनवरी|फ़रवरी|फरवरी|मार्च|अप्रैल|मई|जून|जुलाई|अगस्त|सितंबर|सितम्बर|अक्टूबर|अक्तूबर|नवंबर|नवम्बर|दिसंबर|दिसम्बर)";
+    // one point in time: "Mar 2021", "Mar '19", "03/2021", "1/2016", "2018-06", "2019"
+    private static final String DATE_POINT = "(?:(?<![A-Za-z])" + MONTH + "\\.?\\s+(?:(?:19|20)\\d{2}|'\\d{2})"
+            + "|(?<!\\d)\\d{1,2}/(?:19|20)\\d{2}(?!\\d)"
+            + "|(?<!\\d)(?:19|20)\\d{2}-(?:0[1-9]|1[0-2])(?!\\d)"
+            + "|(?<!\\d)(?:19|20)\\d{2}(?!\\d))";
+    private static final String DATE_END = "(?:" + DATE_POINT + "|present|current|now|ongoing|till date|to date)";
     private static final Pattern DATE_PATTERN = Pattern.compile(
-            "(?i)(?:expected\\s+)?(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|"
-                    + "jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|"
-                    + "present)\\s+\\d{4}|\\b20\\d{2}(?:\\s*[-–]\\s*(?:20\\d{2}|present))?\\b");
+            "(?iu)(?:expected\\s+)?" + DATE_POINT + "(?:\\s*(?:-|–|—|to|till)\\s*" + DATE_END + ")?");
+    private static final Pattern YEAR_RANGE_PATTERN = Pattern.compile("(?:19|20)\\d{2}\\s*[-–]\\s*(?:19|20)\\d{2}");
+    private static final Pattern PHONE_LABEL_PATTERN = Pattern.compile("(?i)\\b(?:phone|mobile|mob|tel|ph|cell|contact)\\b");
     private static final Pattern DEGREE_PATTERN = Pattern.compile(
-            "(?i)\\b(?:master(?:s)?|mca|mba|bachelor(?:s)?|bsc|b\\.sc|btech|b\\.tech|"
-                    + "be|b\\.e|phd|doctorate|associate|diploma)\\b");
+            "(?i)(?<![A-Za-z])(?:master(?:s)?|mca|mba|bachelor(?:s)?|bsc|b\\.sc|msc|m\\.sc|btech|b\\.tech|mtech|m\\.tech|"
+                    + "be|b\\.e|ms|m\\.s|bca|bcom|b\\.com|ba|ma|phd|ph\\.d|doctorate|associate|diploma)(?![A-Za-z])");
+    private static final Pattern INSTITUTION_PATTERN = Pattern.compile(
+            "(?i)\\b(?:university|institute|college|school|academy|iit|nit|iiit|iisc|polytechnic)\\b");
 
     private static final Map<String, Section> HEADINGS = buildHeadings();
 
@@ -49,7 +62,7 @@ public class ResumeParser {
         return new ParsedResume(
                 extractName(contactLines),
                 extractFirst(EMAIL_PATTERN, extractedText),
-                extractFirst(PHONE_PATTERN, extractedText),
+                extractPhone(lines, contactLines),
                 extractLocation(contactLines),
                 parseSkills(sections.get(Section.SKILLS)),
                 parseEducation(sections.get(Section.EDUCATION)),
@@ -60,20 +73,85 @@ public class ResumeParser {
 
     private static Map<String, Section> buildHeadings() {
         Map<String, Section> headings = new LinkedHashMap<>();
-        addHeadings(headings, Section.CONTACT, "CONTACT", "PERSONAL INFORMATION");
-        addHeadings(headings, Section.SUMMARY, "SUMMARY", "PROFILE", "OBJECTIVE");
-        addHeadings(headings, Section.SKILLS, "SKILLS", "TECHNICAL SKILLS", "TECHNICAL SKILL");
-        addHeadings(headings, Section.EDUCATION, "EDUCATION", "EDUCATIONAL QUALIFICATIONS");
-        addHeadings(headings, Section.EXPERIENCE, "EXPERIENCE", "WORK EXPERIENCE",
-                "PROFESSIONAL EXPERIENCE", "EMPLOYMENT");
-        addHeadings(headings, Section.PROJECTS, "PROJECTS", "PROJECT EXPERIENCE",
-                "UNIVERSITY PROJECTS", "ACADEMIC PROJECTS");
-        addHeadings(headings, Section.CERTIFICATIONS, "CERTIFICATIONS", "CERTIFICATES");
+        addHeadings(headings, Section.CONTACT, "CONTACT", "PERSONAL INFORMATION", "CONTACT DETAILS",
+                "PERSONAL DETAILS", "CONTACT INFORMATION");
+        addHeadings(headings, Section.SUMMARY, "SUMMARY", "PROFILE", "OBJECTIVE", "ABOUT ME", "ABOUT",
+                "CAREER OBJECTIVE", "PROFESSIONAL SUMMARY", "CAREER SUMMARY", "PROFILE SUMMARY");
+        addHeadings(headings, Section.SKILLS, "SKILLS", "TECHNICAL SKILLS", "TECHNICAL SKILL", "TECH STACK",
+                "TECHNOLOGIES", "CORE SKILLS", "KEY SKILLS", "SKILLS AND TOOLS", "TECHNICAL PROFICIENCIES",
+                "CORE COMPETENCIES", "TOOLS AND TECHNOLOGIES", "SKILL SET", "SKILLSET");
+        addHeadings(headings, Section.EDUCATION, "EDUCATION", "EDUCATIONAL QUALIFICATIONS", "ACADEMIC BACKGROUND",
+                "ACADEMICS", "EDUCATION AND TRAINING", "QUALIFICATIONS", "EDUCATIONAL BACKGROUND",
+                "ACADEMIC QUALIFICATIONS");
+        addHeadings(headings, Section.EXPERIENCE, "EXPERIENCE", "WORK EXPERIENCE", "PROFESSIONAL EXPERIENCE",
+                "EMPLOYMENT", "WORK HISTORY", "EMPLOYMENT HISTORY", "CAREER HISTORY", "EXPERIENCE SUMMARY",
+                "RELEVANT EXPERIENCE", "INTERNSHIPS", "INTERNSHIP", "INTERNSHIP EXPERIENCE");
+        addHeadings(headings, Section.PROJECTS, "PROJECTS", "PROJECT EXPERIENCE", "UNIVERSITY PROJECTS",
+                "ACADEMIC PROJECTS", "PERSONAL PROJECTS", "KEY PROJECTS", "SIDE PROJECTS", "SELECTED PROJECTS");
+        addHeadings(headings, Section.CERTIFICATIONS, "CERTIFICATIONS", "CERTIFICATES", "CERTIFICATIONS AND AWARDS",
+                "LICENSES AND CERTIFICATIONS", "COURSES AND CERTIFICATIONS");
         addHeadings(headings, Section.ACTIVITIES, "ACTIVITIES", "EXTRACURRICULAR ACTIVITIES");
-        addHeadings(headings, Section.ACHIEVEMENTS, "ACHIEVEMENTS");
+        addHeadings(headings, Section.ACHIEVEMENTS, "ACHIEVEMENTS", "AWARDS", "HONORS AND AWARDS", "AWARDS AND ACHIEVEMENTS");
         addHeadings(headings, Section.LANGUAGES, "LANGUAGES");
-        addHeadings(headings, Section.INTERESTS, "INTERESTS");
+        addHeadings(headings, Section.INTERESTS, "INTERESTS", "HOBBIES");
         return Map.copyOf(headings);
+    }
+
+    // Words that may appear in a heading. A short line made only of these words is a heading;
+    // its first keyword picks the section ("Key Technical Skills", "Relevant Work Experience").
+    private static final Map<String, Section> HEADING_KEYWORDS = Map.ofEntries(
+            Map.entry("EXPERIENCE", Section.EXPERIENCE), Map.entry("EMPLOYMENT", Section.EXPERIENCE),
+            Map.entry("HISTORY", Section.EXPERIENCE), Map.entry("INTERNSHIPS", Section.EXPERIENCE),
+            Map.entry("SKILLS", Section.SKILLS), Map.entry("STACK", Section.SKILLS),
+            Map.entry("TECHNOLOGIES", Section.SKILLS), Map.entry("COMPETENCIES", Section.SKILLS),
+            Map.entry("PROFICIENCIES", Section.SKILLS),
+            Map.entry("EDUCATION", Section.EDUCATION), Map.entry("QUALIFICATIONS", Section.EDUCATION),
+            Map.entry("PROJECTS", Section.PROJECTS),
+            Map.entry("CERTIFICATIONS", Section.CERTIFICATIONS), Map.entry("CERTIFICATES", Section.CERTIFICATIONS),
+            Map.entry("SUMMARY", Section.SUMMARY), Map.entry("OBJECTIVE", Section.SUMMARY),
+            Map.entry("ACHIEVEMENTS", Section.ACHIEVEMENTS), Map.entry("AWARDS", Section.ACHIEVEMENTS),
+            Map.entry("LANGUAGES", Section.LANGUAGES), Map.entry("INTERESTS", Section.INTERESTS));
+    private static final java.util.Set<String> HEADING_MODIFIERS = java.util.Set.of(
+            "KEY", "CORE", "TECHNICAL", "TECH", "PERSONAL", "SIDE", "ACADEMIC", "PROFESSIONAL", "WORK", "CAREER",
+            "RELEVANT", "SELECTED", "AND", "TOOLS", "TRAINING", "HONORS", "HONOURS", "OF", "MY", "OTHER",
+            "SOFTWARE", "INDUSTRY", "EDUCATIONAL", "COURSES", "LICENSES", "NOTABLE", "MAJOR", "RECENT", "SPOKEN");
+
+    private static Section headingOf(String line) {
+        String cleaned = line.replaceFirst("^\\s*[-*•▪◦]\\s*", "").trim();
+        if (cleaned.isEmpty() || cleaned.length() > 40 || cleaned.matches(".*[|,;0-9].*")
+                || (cleaned.indexOf(':') >= 0 && cleaned.indexOf(':') < cleaned.length() - 1)) {
+            return null;
+        }
+        String normalized = normalizeHeadingText(cleaned);
+        Section exact = HEADINGS.get(normalized);
+        if (exact != null) {
+            return exact;
+        }
+        String[] words = normalized.split(" ");
+        if (words.length > 4) {
+            return null;
+        }
+        Section section = null;
+        for (String word : words) {
+            Section keyword = HEADING_KEYWORDS.get(word);
+            if (keyword == null && !HEADING_MODIFIERS.contains(word)) {
+                return null;
+            }
+            if (section == null) {
+                section = keyword;
+            }
+        }
+        return section;
+    }
+
+    private static String normalizeHeadingText(String cleaned) {
+        return cleaned
+                .replaceFirst("[:：]$", "")
+                .replace("&", " AND ")
+                .replaceAll("[^A-Za-z ]", "")
+                .trim()
+                .replaceAll("\\s+", " ")
+                .toUpperCase(Locale.ROOT);
     }
 
     private static void addHeadings(Map<String, Section> headings, Section section, String... names) {
@@ -87,7 +165,7 @@ public class ResumeParser {
         Section currentSection = null;
 
         for (String line : lines) {
-            Section heading = HEADINGS.get(normalizeHeading(line));
+            Section heading = headingOf(line);
             if (heading != null) {
                 currentSection = heading;
             } else if (currentSection != null) {
@@ -101,7 +179,7 @@ public class ResumeParser {
     private List<String> contactLines(List<String> lines, List<String> contactSection) {
         List<String> result = new ArrayList<>();
         for (String line : lines) {
-            if (HEADINGS.containsKey(normalizeHeading(line))) {
+            if (headingOf(line) != null) {
                 break;
             }
             result.add(line);
@@ -129,8 +207,12 @@ public class ResumeParser {
     }
 
     private String extractLocation(List<String> lines) {
+        List<String> fields = new ArrayList<>();
         for (String line : lines) {
-            String cleanLine = cleanLine(line);
+            fields.addAll(Arrays.asList(cleanLine(line).split("\\s*\\|\\s*")));
+        }
+        for (String field : fields) {
+            String cleanLine = field.trim();
             Matcher labeledMatcher = LABELED_LOCATION_PATTERN.matcher(cleanLine);
             if (labeledMatcher.matches()) {
                 return labeledMatcher.group(1).trim();
@@ -140,6 +222,35 @@ public class ResumeParser {
             }
         }
         return null;
+    }
+
+    // Prefer a number on a "Phone:/Mobile:" line, then the contact block, then anywhere.
+    // A candidate needs 10-15 digits and must not be a year range like "2015 - 2024".
+    private String extractPhone(List<String> allLines, List<String> contactLines) {
+        String labeled = null;
+        String contact = null;
+        String anywhere = null;
+        java.util.Set<String> contactSet = new java.util.HashSet<>(contactLines);
+        for (String line : allLines) {
+            Matcher matcher = PHONE_PATTERN.matcher(line);
+            while (matcher.find()) {
+                String candidate = matcher.group().trim();
+                int digits = candidate.replaceAll("\\D", "").length();
+                if (digits < 10 || digits > 15 || YEAR_RANGE_PATTERN.matcher(candidate).find()) {
+                    continue;
+                }
+                if (labeled == null && PHONE_LABEL_PATTERN.matcher(line).find()) {
+                    labeled = candidate;
+                }
+                if (contact == null && contactSet.contains(line)) {
+                    contact = candidate;
+                }
+                if (anywhere == null) {
+                    anywhere = candidate;
+                }
+            }
+        }
+        return labeled != null ? labeled : contact != null ? contact : anywhere;
     }
 
     private String extractFirst(Pattern pattern, String text) {
@@ -159,7 +270,7 @@ public class ResumeParser {
             if (colonIndex >= 0) {
                 normalizedLine = normalizedLine.substring(colonIndex + 1);
             }
-            for (String skill : normalizedLine.split("[,;|]")) {
+            for (String skill : normalizedLine.split("\\s*[,;|]\\s*|\\s+and\\s+|\\s+&\\s+")) {
                 String cleanSkill = canonicalizeSkill(cleanLine(skill));
                 if (!cleanSkill.isBlank()) {
                     uniqueSkills.putIfAbsent(cleanSkill.toLowerCase(Locale.ROOT), cleanSkill);
@@ -170,37 +281,90 @@ public class ResumeParser {
     }
 
     private String canonicalizeSkill(String skill) {
-        return switch (skill.toLowerCase(Locale.ROOT)) {
-            case "postgresql", "postgres sql" -> "PostgreSQL";
-            default -> skill;
-        };
+        // "springboot", "Spring boot" and "spring-boot" all become "Spring Boot" (skills.txt),
+        // so the analysis counts them once. Unknown skills are kept as written.
+        return SkillDictionary.getDefault().canonical(skill).orElse(skill);
     }
 
+    // Splits the section into one entry per school: a pipe line is a whole entry; otherwise a new entry
+    // starts at an institution-looking line after an entry that already has dates, or at a second degree line.
     private List<EducationEntry> parseEducation(List<String> lines) {
         if (lines == null || lines.isEmpty()) {
             return List.of();
         }
 
-        List<String> cleanLines = lines.stream().map(this::cleanLine).toList();
-        if (cleanLines.get(0).contains("|")) {
-            List<String> fields = splitFields(cleanLines.get(0));
-            return List.of(new EducationEntry(
-                    fieldOrNull(fields, 0),
-                    fieldOrNull(fields, 1),
-                    fieldOrNull(fields, 2),
-                    fieldOrNull(fields, 3)));
+        List<EducationEntry> entries = new ArrayList<>();
+        List<String> block = new ArrayList<>();
+        boolean blockHasDegree = false;
+        boolean blockHasDate = false;
+        for (String rawLine : lines) {
+            String line = cleanLine(rawLine);
+            if (line.contains("|")) {
+                flushEducation(block, entries);
+                blockHasDegree = blockHasDate = false;
+                List<String> fields = splitFields(line);
+                entries.add(new EducationEntry(fieldOrNull(fields, 0), fieldOrNull(fields, 1),
+                        fieldOrNull(fields, 2), fieldOrNull(fields, 3)));
+                continue;
+            }
+            boolean degree = DEGREE_PATTERN.matcher(line).find();
+            boolean date = containsDate(line);
+            boolean institution = !degree && !date && looksLikeInstitution(line);
+            if (!block.isEmpty() && ((institution && blockHasDate) || (degree && blockHasDegree))) {
+                flushEducation(block, entries);
+                blockHasDegree = blockHasDate = false;
+            }
+            block.add(line);
+            blockHasDegree |= degree;
+            blockHasDate |= date;
         }
-        int degreeIndex = firstIndexMatching(cleanLines, DEGREE_PATTERN);
-        String institution = degreeIndex > 0 ? cleanLines.get(0) : null;
-        String degree = degreeIndex >= 0 ? cleanLines.get(degreeIndex) : null;
-        String dates = firstMatch(DATE_PATTERN, String.join(" ", cleanLines));
-        List<String> details = new ArrayList<>();
-        for (int index = 0; index < cleanLines.size(); index++) {
-            if (index != 0 && index != degreeIndex && !containsDate(cleanLines.get(index))) {
-                details.add(cleanLines.get(index));
+        flushEducation(block, entries);
+        return List.copyOf(entries);
+    }
+
+    private boolean looksLikeInstitution(String line) {
+        if (line.matches(".*\\d.*")) {
+            return false;
+        }
+        if (INSTITUTION_PATTERN.matcher(line).find()) {
+            return true;
+        }
+        if (line.matches(".*[;:.()/].*") || line.split("\\s+").length > 5) {
+            return false;
+        }
+        for (String word : line.split("\\s+")) {
+            if (!word.isEmpty() && Character.isLowerCase(word.charAt(0))
+                    && !word.matches("of|and|the|for|in|de|at")) {
+                return false;
             }
         }
-        return List.of(new EducationEntry(institution, degree, dates, String.join(" ", details)));
+        return true;
+    }
+
+    private void flushEducation(List<String> block, List<EducationEntry> entries) {
+        if (block.isEmpty()) {
+            return;
+        }
+        int degreeIndex = firstIndexMatching(block, DEGREE_PATTERN);
+        int institutionIndex = -1;
+        for (int index = 0; index < block.size(); index++) {
+            if (index != degreeIndex && !containsDate(block.get(index)) && looksLikeInstitution(block.get(index))) {
+                institutionIndex = index;
+                break;
+            }
+        }
+        String institution = institutionIndex >= 0 ? block.get(institutionIndex) : null;
+        String degree = degreeIndex >= 0 ? block.get(degreeIndex) : null;
+        String dates = firstMatch(DATE_PATTERN, String.join(" ", block));
+        List<String> details = new ArrayList<>();
+        for (int index = 0; index < block.size(); index++) {
+            String line = block.get(index);
+            if (index != institutionIndex && index != degreeIndex && !line.equals(dates)) {
+                details.add(line);
+            }
+        }
+        entries.add(new EducationEntry(institution, degree, dates, details.isEmpty() ? null : String.join(" ", details)));
+        block.clear();
     }
 
     private List<ExperienceEntry> parseExperience(List<String> lines) {
@@ -222,26 +386,35 @@ public class ResumeParser {
 
         List<HeaderEntry> entries = new ArrayList<>();
         HeaderEntry current = null;
+        String previousText = null; // last line added to a description (bullet or its wrapped continuation)
         for (String rawLine : lines) {
             boolean bullet = isBullet(rawLine);
             String line = cleanLine(rawLine);
             if (bullet && current != null) {
                 current = current.withDescription(append(current.description(), line));
+                previousText = line;
+            } else if (!bullet && current != null && previousText != null && isContinuation(previousText, line)) {
+                // a long bullet wrapped onto the next line: same bullet, not a new entry
+                current = current.withDescription(append(current.description(), line));
+                previousText = line;
             } else if (!bullet) {
                 if (current != null) {
                     entries.add(current);
                 }
                 List<String> fields = splitFields(line);
+                boolean piped = pipeFields && fields.size() > 1;
                 String header = fields.get(0);
-                String title = pipeFields ? fieldOrNull(fields, 1) : null;
-                String dates = pipeFields ? fieldOrNull(fields, 2) : firstMatch(DATE_PATTERN, line);
-                String description = pipeFields ? fieldOrNull(fields, 3) : null;
-                if (!pipeFields) {
+                String title = piped ? fieldOrNull(fields, 1) : null;
+                String dates = piped ? fieldOrNull(fields, 2) : firstMatch(DATE_PATTERN, line);
+                String description = piped ? fieldOrNull(fields, 3) : null;
+                if (!piped) {
                     header = removeTrailingDate(header);
                 }
                 current = new HeaderEntry(header, title, dates, description);
-            } else if (current == null) {
+                previousText = null;
+            } else {
                 current = new HeaderEntry(null, null, null, line);
+                previousText = line;
             }
         }
         if (current != null) {
@@ -250,10 +423,22 @@ public class ResumeParser {
         return entries;
     }
 
+    // A wrapped line starts lower-case, or follows a line that did not end a sentence,
+    // and it is not itself an entry header (no "|" fields, no dates).
+    private boolean isContinuation(String previous, String line) {
+        if (line.contains("|")) {
+            return false;
+        }
+        if (Character.isLowerCase(line.codePointAt(0))) {
+            return true;
+        }
+        return !previous.matches(".*[.!?;:]$") && !containsDate(line);
+    }
+
     private String removeTrailingDate(String line) {
-        Matcher matcher = DATE_PATTERN.matcher(line);
-        return matcher.find() && matcher.end() == line.length()
-                ? line.substring(0, matcher.start()).trim()
+        Matcher matcher = Pattern.compile("\\(?\\s*(?:" + DATE_PATTERN.pattern() + ")\\s*\\)?$").matcher(line);
+        return matcher.find() && matcher.start() > 0
+                ? line.substring(0, matcher.start()).replaceFirst("[\\s,–-]+$", "").trim()
                 : line;
     }
 
@@ -299,15 +484,6 @@ public class ResumeParser {
 
     private String cleanLine(String line) {
         return line.replaceFirst("^\\s*[-*•▪◦]\\s*", "").trim();
-    }
-
-    private String normalizeHeading(String line) {
-        return cleanLine(line)
-                .replaceFirst("[:：]$", "")
-                .replaceAll("[^A-Za-z ]", "")
-                .trim()
-                .replaceAll("\\s+", " ")
-                .toUpperCase(Locale.ROOT);
     }
 
     private ParsedResume emptyResume() {

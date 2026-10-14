@@ -53,8 +53,7 @@ public class User {
         return name;
     }
 
-    // What the app shows: the name, or the email for older users without a name
-    public String getDisplayName() {
-        return name == null || name.isBlank() ? email : name;
+    public void setName(String name) {
+        this.name = name;
     }
 }

@@ -9,6 +9,11 @@ public record LoginRequest(
         @Email
         String email,
         @NotBlank
-        @Size(min = 8, max = 255)
+        @Size(max = 255)
         String password) {
+
+    // same normalisation as registration; the password length rule is not revealed at login
+    public LoginRequest {
+        email = RegistrationRequest.normalizeEmail(email);
+    }
 }

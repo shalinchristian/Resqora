@@ -1,5 +1,6 @@
 package com.resqora.resqora_backend.security;
 
+import com.resqora.resqora_backend.repository.UserRepository;
 import com.resqora.resqora_backend.service.JwtService;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
@@ -20,8 +21,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
 
-    public JwtAuthenticationFilter(JwtService jwtService) {
+    private final UserRepository userRepository;
+
+    public JwtAuthenticationFilter(JwtService jwtService, UserRepository userRepository) {
         this.jwtService = jwtService;
+        this.userRepository = userRepository;
     }
 
     @Override
@@ -38,6 +42,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
             try {
                 Long userId = jwtService.validateAndExtractUserId(token);
+                // a valid token for a deleted user is not authenticated: every endpoint answers 401
+                if (!userRepository.existsById(userId)) {
+                    throw new IllegalArgumentException("User no longer exists");
+                }
                 UsernamePasswordAuthenticationToken authentication =
                         new UsernamePasswordAuthenticationToken(userId, null, Collections.emptyList());
                 SecurityContextHolder.getContext().setAuthentication(authentication);

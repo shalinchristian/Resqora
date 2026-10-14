@@ -3,6 +3,7 @@ package com.resqora.resqora_backend.service.ai;
 import com.resqora.resqora_backend.dto.ai.AiAction;
 import com.resqora.resqora_backend.dto.ai.AiRequest;
 import com.resqora.resqora_backend.dto.ai.AiResponse;
+import com.resqora.resqora_backend.dto.ai.AiUsageResponse;
 import com.resqora.resqora_backend.entity.AiCachedResponse;
 import com.resqora.resqora_backend.entity.AiUsage;
 import com.resqora.resqora_backend.exception.AiDailyLimitExceededException;
@@ -43,6 +44,7 @@ public class AiService {
     private final AiClient aiClient;
     private final int dailyLimit;
     private final int dailyCap;
+    private final ZoneId zone;
 
     public AiService(
             ResumeService resumeService,
@@ -52,7 +54,8 @@ public class AiService {
             AiUsageRepository usageRepository,
             AiClient aiClient,
             @Value("${resqora.ai.daily-limit:10}") int dailyLimit,
-            @Value("${resqora.ai.daily-cap:50}") int dailyCap) {
+            @Value("${resqora.ai.daily-cap:50}") int dailyCap,
+            @Value("${resqora.timezone:Asia/Kolkata}") String timezone) {
         this.resumeService = resumeService;
         this.resumeRepository = resumeRepository;
         this.userRepository = userRepository;
@@ -61,6 +64,7 @@ public class AiService {
         this.aiClient = aiClient;
         this.dailyLimit = dailyLimit;
         this.dailyCap = dailyCap;
+        this.zone = ZoneId.of(timezone);
     }
 
     public AiResponse run(Long resumeId, AiRequest request, Authentication authentication) {
@@ -105,8 +109,19 @@ public class AiService {
         return toResponse(request.action(), normalized, (int) Math.max(0, dailyLimit - usedToday - 1));
     }
 
-    private static Instant startOfToday() {
-        return LocalDate.now(ZoneId.systemDefault()).atStartOfDay(ZoneId.systemDefault()).toInstant();
+    public AiUsageResponse usage(Authentication authentication) {
+        long used = usedToday((Long) authentication.getPrincipal());
+        return new AiUsageResponse((int) used, dailyLimit, (int) Math.max(0, dailyLimit - used));
+    }
+
+    // "Today" = midnight in the app's zone (default IST), not the server's zone,
+    // so limits reset at 12:00 AM IST even if the server runs in UTC.
+    private Instant startOfToday() {
+        return startOfDay(Instant.now(), zone);
+    }
+
+    static Instant startOfDay(Instant now, ZoneId zone) {
+        return LocalDate.ofInstant(now, zone).atStartOfDay(zone).toInstant();
     }
 
     private long usedToday(Long userId) {

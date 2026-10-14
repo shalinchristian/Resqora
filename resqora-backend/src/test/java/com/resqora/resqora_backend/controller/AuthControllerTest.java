@@ -1,48 +1,36 @@
 package com.resqora.resqora_backend.controller;
 
 import com.resqora.resqora_backend.dto.MeResponse;
-import com.resqora.resqora_backend.entity.User;
-import com.resqora.resqora_backend.repository.UserRepository;
+import com.resqora.resqora_backend.exception.AuthenticatedUserNotFoundException;
+import com.resqora.resqora_backend.service.AuthService;
 import org.junit.jupiter.api.Test;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 
 import java.util.List;
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class AuthControllerTest {
-    private final UserRepository userRepository = mock(UserRepository.class);
-    private final AuthController authController = new AuthController(null, userRepository);
+    private final AuthService authService = mock(AuthService.class);
+    private final AuthController authController = new AuthController(authService);
 
     @Test
     void returnsAuthenticatedUserDetails() {
-        User user = mock(User.class);
-        when(user.getId()).thenReturn(42L);
-        when(user.getEmail()).thenReturn("user@example.com");
-        when(user.getDisplayName()).thenReturn("Asha Rao");
-        when(userRepository.findById(42L)).thenReturn(Optional.of(user));
+        when(authService.me(42L)).thenReturn(new MeResponse(42L, "user@example.com", "Asha Rao"));
 
-        ResponseEntity<MeResponse> response = authController.me(authenticationFor(42L));
-
-        assertEquals(HttpStatus.OK, response.getStatusCode());
-        assertEquals(new MeResponse(42L, "user@example.com", "Asha Rao"), response.getBody());
+        assertEquals(new MeResponse(42L, "user@example.com", "Asha Rao"), authController.me(authenticationFor(42L)));
     }
 
     @Test
-    void returnsNotFoundWhenAuthenticatedUserDoesNotExist() {
-        when(userRepository.findById(42L)).thenReturn(Optional.empty());
+    void missingUserIsPassedOnAsException() {
+        // GlobalExceptionHandler turns this into 401 with the standard error body
+        when(authService.me(42L)).thenThrow(new AuthenticatedUserNotFoundException());
 
-        ResponseEntity<MeResponse> response = authController.me(authenticationFor(42L));
-
-        assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
-        assertNull(response.getBody());
+        assertThrows(AuthenticatedUserNotFoundException.class, () -> authController.me(authenticationFor(42L)));
     }
 
     private Authentication authenticationFor(Long userId) {
