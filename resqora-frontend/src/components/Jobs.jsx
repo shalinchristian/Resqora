@@ -41,12 +41,17 @@ export default function Jobs({ resumeId, title = 'Matching jobs', note, style })
                   )}
                 </span>
                 <span className="shrink-0 text-sm text-muted group-hover:text-ink transition-colors">
-                  Apply
+                  View job
                 </span>
               </a>
             </li>
           ))}
         </ul>
+      )}
+      {state.jobs && state.jobs.length > 0 && (
+        <p className="mt-3 text-xs text-faint">
+          Remote jobs via <a href="https://jobicy.com" target="_blank" rel="noreferrer" className="underline hover:text-ink">Jobicy</a>. Each job opens its original listing.
+        </p>
       )}
     </Section>
   )

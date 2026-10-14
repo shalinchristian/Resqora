@@ -8,5 +8,7 @@ public record JobSuggestion(
         String location,
         int matchScore,
         List<String> matchedSkills,
-        String url) {
+        String url,
+        // where the job comes from ("Jobicy"); show it with a link to url
+        String source) {
 }

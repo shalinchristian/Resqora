@@ -137,11 +137,12 @@ class Slice14IntegrationTest {
     }
 
     @Test
-    void jobsWithoutKeysIs503EvenWhenNoSkills() throws Exception { // B6
+    void jobsWithNoSkillsIsEmptyWithoutCallingJobicy() throws Exception { // B6 (Jobicy needs no key)
         String token = newUser();
         long id = upload(token, docx("Asha Rao", "asha@x.com", "Just a line of text with nothing else in it at all."));
         mockMvc.perform(get("/api/resumes/" + id + "/jobs").header("Authorization", "Bearer " + token))
-                .andExpect(status().isServiceUnavailable());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.jobs.length()").value(0));
     }
 
     @Test
