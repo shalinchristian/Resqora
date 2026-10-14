@@ -79,6 +79,7 @@ public class JobSuggestionService {
         List<JobSuggestion> jobs = postings.stream()
                 .map(posting -> toSuggestion(posting, parsedResume.skills()))
                 .sorted(Comparator.comparingInt(JobSuggestion::matchScore).reversed())
+                .limit(MAX_RESULTS)
                 .toList();
 
         String json = JSON.writeValueAsString(jobs);
@@ -107,7 +108,7 @@ public class JobSuggestionService {
                 + (posting.description() == null ? "" : posting.description());
         JobMatchResponse match = jobMatcher.match(resumeSkills, text);
         return new JobSuggestion(posting.title(), posting.company(), posting.location(),
-                match.matchScore(), match.matchedSkills(), posting.url());
+                match.matchScore(), match.matchedSkills(), posting.url(), JobicyJobSearchClient.SOURCE);
     }
 
     private List<JobSuggestion> readJobs(String json) {

@@ -53,7 +53,7 @@ class JobSuggestionIntegrationTest {
             calls++;
             lastKeywords = keywords;
             if (fail) {
-                throw new IllegalStateException("adzuna down");
+                throw new IllegalStateException("jobicy down");
             }
             return List.of(
                     new JobPosting("Frontend Developer", "Acme", "Pune", "React and TypeScript", "https://a.example/1"),
@@ -108,6 +108,7 @@ class JobSuggestionIntegrationTest {
                 .andExpect(jsonPath("$.jobs[0].location").value("Kolkata"))
                 .andExpect(jsonPath("$.jobs[0].matchScore").value(100))
                 .andExpect(jsonPath("$.jobs[0].url").value("https://a.example/2"))
+                .andExpect(jsonPath("$.jobs[0].source").value("Jobicy"))
                 .andExpect(jsonPath("$.jobs[1].title").value("Java Developer"))
                 .andExpect(jsonPath("$.jobs[1].matchScore").value(50))
                 .andExpect(jsonPath("$.jobs[1].matchedSkills[0]").value("Java"))
