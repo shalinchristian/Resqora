@@ -5,6 +5,7 @@ public record ResumeUploadResponse(
 	String message,
 	String fileName,
 	String documentType,
-	String extractedText) {
+	String extractedText,
+	Integer overallScore) {
 
 }

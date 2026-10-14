@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.net.URI;
+
 @RestController
 @RequestMapping("/api/resumes")
 public class ResumeController {
@@ -38,10 +40,12 @@ public class ResumeController {
     }
 
     @PostMapping("/upload")
-    public ResumeUploadResponse uploadResume(
+    public ResponseEntity<ResumeUploadResponse> uploadResume(
             @RequestParam("file") MultipartFile file,
             Authentication authentication) {
-        return resumeService.uploadResume(file, authentication);
+        ResumeUploadResponse response = resumeService.uploadResume(file, authentication);
+        // 201 Created + Location of the new resume's analysis
+        return ResponseEntity.created(URI.create("/api/resumes/" + response.id() + "/analysis")).body(response);
     }
 
     @GetMapping("/{resumeId}/parsed")

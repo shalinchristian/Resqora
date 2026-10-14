@@ -6,5 +6,8 @@ public record ResumeSummary(
         Long id,
         String originalFileName,
         String documentType,
-        Instant uploadedAt) {
+        Instant uploadedAt,
+        Integer overallScore,
+        // most important saved finding (null if not analysed yet or nothing to fix)
+        String topFinding) {
 }
