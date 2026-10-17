@@ -1,283 +1,305 @@
-# Resqora
+<div align="center">
 
-Resqora is a resume analysis web app. A user registers, uploads a resume (PDF or DOCX), and gets:
+  <h1>RESQORA</h1>
+  <p><strong>Resume analysis. Structured feedback. Better job matching.</strong></p>
+  <p>A resume analysis application built with Java, Spring Boot, React, and PostgreSQL.</p>
+  <p>
+    <a href="https://resqora-1.onrender.com"><img src="https://img.shields.io/badge/LIVE_DEMO-OPEN_APP-0F766E?style=for-the-badge" alt="Live demo" /></a>
+    <a href="https://hits.sh/github.com/shalinchristian/Resqora/"><img src="https://hits.sh/github.com/shalinchristian/Resqora.svg?style=for-the-badge&label=REPO%20VIEWS&color=0F766E" alt="Repository view count" /></a>
+  </p>
+</div>
 
-- the text extracted and split into sections (contact, skills, education, experience, projects, certifications)
-- a rule-based score with findings on what is strong and what is missing
-- a match score against a job description, listing matched and missing skills
-- optional AI help through Google Gemini: a saved 2-3 line summary per resume and a short chat about the resume (optionally against a job description)
+<br/>
 
-The backend is a simple layered Spring Boot monolith (REST API, JWT login, PostgreSQL). The frontend is a React single-page app in `resqora-frontend/`.
+> **Resqora** is a resume analysis web application built with **Java, Spring Boot, React, and PostgreSQL**. It extracts content from PDF and DOCX resumes, provides rule-based scoring and feedback, matches resumes against job descriptions, suggests remote jobs, and offers optional AI assistance through Google Gemini.
 
-## Features
+<details open>
+<summary><b>Table of contents</b></summary>
 
-- Register with name, email and password (8+ chars, letters and digits); log in to get a JWT (BCrypt-hashed passwords); change your name, change your password, delete your account
-- Login protection: too many failed logins per email or IP returns 429 for 15 minutes; password change and account delete share a lock of 5 wrong passwords per 15 minutes
-- Upload PDF/DOCX resumes (max 2 MB, max 5 resumes per user), list them, preview the original file and delete them
-- Text extraction (PDFBox, Apache POI) that reads multi-column PDFs (sidebar, 2 or 3 columns) column by column, and DOCX tables, nested tables and text boxes in order; scanned PDFs get a clear 422
-- When a layout can't be read reliably, the analysis says so first instead of showing a confident-looking low score
-- Demo mode: a ready-made demo account that is reset on every restart and can't be deleted or changed
-- Rule-based parsing into structured sections, tolerant of heading variants ("Work History", "Tech Stack"), wrapped bullets and many date formats
-- Rule-based scoring: overall, completeness, skills, projects, experience, education, plus findings that point to the exact line to fix
-- Each resume is analysed right after upload and the result is saved, so scores show up on the dashboard immediately
-- Job description matching against a ~200-skill dictionary in `skills.txt`, with aliases (no AI, deterministic)
-- Job suggestions ranked by match score: currently need Adzuna keys and are hidden in the frontend; the job source is being replaced with a free one
-- AI summary (saved per resume) and resume chat through Gemini, with a per-user daily limit and an app-wide daily cap
-- Same JSON error format for every error, including 401 from Spring Security
-- Swagger UI with a JWT "Authorize" button
-- Each user can only see and change their own resumes (others' resumes return 404)
+1. [Overview](#1-overview)
+2. [Tech stack](#2-tech-stack)
+3. [Architecture and data flow](#3-architecture-and-data-flow)
+4. [Setup](#4-setup)
+5. [Limitations](#5-limitations)
 
-## Tech stack
+</details>
 
-| Layer | Technology |
+---
+
+## 1. Overview
+
+### Features
+
+| Feature | What it does |
 |---|---|
-| Language | Java 21 |
-| Backend framework | Spring Boot 4.1.1 (Web MVC, Data JPA, Validation, Security) |
-| Authentication | JWT (jjwt 0.12.6), BCrypt |
-| Database | PostgreSQL, schema managed by Flyway (V1-V8) |
-| ORM | JPA / Hibernate |
-| Document parsing | Apache PDFBox 3.0.5, Apache POI 5.4.1 |
-| API docs | springdoc-openapi 3.1.1 (Swagger UI) |
-| AI (optional) | Google Gemini REST API via Spring RestClient |
-| Job search (optional) | Adzuna Jobs API via Spring RestClient (being replaced) |
-| Testing | JUnit 5, Mockito, Spring MockMvc, H2 in-memory database |
-| Frontend | React 19, React Router 7, Vite 6, Tailwind CSS 4, docx-preview |
-| Build | Maven wrapper, npm |
+| **Resume analysis** | Extracts text and organises it into contact information, skills, education, experience, projects, and certifications. |
+| **Scoring and findings** | Calculates an overall score and section scores, with findings that point to content that may need improvement. |
+| **Job matching** | Compares resume skills with a job description using a local dictionary of approximately 200 skills and aliases. Matching is deterministic and does not use AI. |
+| **Job suggestions** | Retrieves remote roles from [Jobicy](https://jobicy.com/api/v2), ranks them by match score, and links to the original listings. |
+| **AI assistance (optional)** | Generates a saved resume summary and provides a short resume-focused chat through Gemini. |
+| **Account management** | JWT authentication, BCrypt password hashing, account settings, and user-specific resume access. |
+| **Document handling** | Uploads, lists, previews, and deletes PDF/DOCX files. Uploads are limited to 2 MB per file and five resumes per user. |
+| **API documentation** | Swagger UI with JWT authorization support. |
 
-## Development method
+> Resume scoring and job matching work **without AI**. A Gemini API key is only needed for AI summaries and chat.
 
-The project follows the **Iterative and Incremental** model. Every increment is a small, working, tested slice of the system that was committed on its own:
+---
 
-1. Core: register/login with JWT, resume upload, text extraction, parsing and rule-based scoring
-2. CORS for the frontend, Swagger UI, proper status codes and one error format, stateless sessions
-3. List and delete resumes, 5-resume limit per user
-4. Saved analysis results (Flyway V3)
-5. Job description matching
-6. First AI feature with limits (Flyway V4)
-7. User names (Flyway V5)
-8. Dashboard data: saved score in the resume list, AI usage endpoint
-9. Analysis right after upload
-10. Job suggestions from Adzuna (Flyway V6)
-11. Hardening: login limiter, password rule, editable name, skill dictionary file, IST-based AI limits, lowercase emails (Flyway V7)
-12. AI summary and chat replace the old AI endpoint, file preview, account settings (Flyway V8)
-13. Frontend: home page, login and register, dashboard, resume detail with score, findings, job match, AI summary and chat, file preview with pop-up, account settings, light and dark mode
+## 2. Tech stack
 
-```mermaid
-flowchart LR
-    I1[1. Auth, upload, parse, score] --> I2[2. CORS, Swagger, errors]
-    I2 --> I3[3. List, delete, 5 limit]
-    I3 --> I4[4. Saved analysis]
-    I4 --> I5[5. Job match]
-    I5 --> I6[6. AI actions]
-    I6 --> I7[7. User names]
-    I7 --> I8[8. Dashboard data]
-    I8 --> I9[9. Analyse on upload]
-    I9 --> I10[10. Job suggestions]
-    I10 --> I11[11. Hardening]
-    I11 --> I12[12. Summary, chat, preview, account]
+| Area | Technologies |
+|---|---|
+| **Language** | ![Java](https://img.shields.io/badge/Java_21-ED8B00?style=flat-square&logo=openjdk&logoColor=white) |
+| **Backend** | Spring Boot 4.1.1, Spring Web MVC, Spring Data JPA, Spring Security, Validation |
+| **Authentication** | JWT (`jjwt` 0.12.6), BCrypt |
+| **Database and migrations** | PostgreSQL, Hibernate/JPA, Flyway (V1–V8) |
+| **PDF and DOCX parsing** | Apache PDFBox 3.0.5, Apache POI 5.4.1 |
+| **API documentation** | springdoc-openapi 3.1.1, Swagger UI |
+| **AI integration** | Google Gemini REST API via Spring `RestClient` |
+| **Job search** | Jobicy REST API via Spring `RestClient` |
+| **Frontend** | React 19, React Router 7, Vite 6, Tailwind CSS 4, `docx-preview` |
+| **Testing** | JUnit 5, Mockito, Spring MockMvc, H2 |
+| **Containerisation and build** | Docker multi-stage build, Maven Wrapper, npm |
+
+The repository keeps the backend and frontend separate:
+
+```text
+Resqora/
+├── resqora-backend/       # Spring Boot API, migrations, tests, Dockerfile
+└── resqora-frontend/      # React application
 ```
 
-## Architecture
+---
+
+## 3. Architecture and data flow
+
+### 3.1 System architecture
 
 ```mermaid
 flowchart TD
-    UI[Frontend] -->|HTTP JSON, Bearer JWT| SEC[Spring Security + JWT filter]
-    SEC --> C[Controllers]
-    C --> S[Services: auth, resume, parsing, analysis, matching, AI]
-    S --> R[Repositories - Spring Data JPA]
+    UI[React frontend] -->|HTTP / JSON / Bearer JWT| SEC[Spring Security + JWT filter]
+    SEC --> C[REST controllers]
+    C --> S[Service layer]
+    S --> R[Spring Data JPA repositories]
     R --> DB[(PostgreSQL)]
-    S -.->|optional| G[Google Gemini API]
-    S -.->|optional| J[Adzuna Jobs API]
-    C --> EH[GlobalExceptionHandler]
+    S -. optional .-> G[Google Gemini API]
+    S -.-> J[Jobicy API]
+    C --> E[Global exception handler]
 ```
 
-The backend uses a layered structure: controllers handle HTTP only, services hold the business rules, repositories talk to the database. DTOs (Java records) are used for requests and responses, so entities are never returned directly.
+Controllers handle HTTP requests, services implement application logic, and repositories persist data. DTOs define request and response shapes so JPA entities are not returned directly by the API.
 
-## Request flow
+### 3.2 Resume upload flow
 
 ```mermaid
 sequenceDiagram
-    participant U as Browser
-    participant A as AuthController
-    participant F as JwtAuthenticationFilter
-    participant R as ResumeController
+    actor User
+    participant UI as React frontend
+    participant JWT as JWT filter
+    participant C as ResumeController
     participant S as ResumeService
-    participant D as PostgreSQL
+    participant X as Document extraction
+    participant A as Parser and scorer
+    participant DB as PostgreSQL
 
-    U->>A: POST /api/auth/login (email, password)
-    A->>D: find user, check BCrypt hash
-    A-->>U: 200 token and name
-    U->>F: POST /api/resumes/upload with Bearer token
-    F->>F: validate JWT, set user id
-    F->>R: request is authenticated
-    R->>S: uploadResume(file)
-    S->>S: check 5 limit, extract text
-    S->>D: save resume
-    S->>S: parse and score
-    S->>D: save analysis
-    R-->>U: 201 id, extracted text, overallScore
+    User->>UI: Select PDF or DOCX
+    UI->>JWT: POST /api/resumes/upload + Bearer token
+    JWT->>JWT: Validate token and identify user
+    JWT->>C: Authenticated request
+    C->>S: uploadResume(file)
+    S->>S: Check file and per-user limits
+    S->>X: Extract document text
+    X-->>S: Extracted text
+    S->>A: Parse sections and calculate scores
+    A-->>S: Parsed resume, scores, findings
+    S->>DB: Save resume and analysis
+    S-->>C: Saved result
+    C-->>UI: 201 Created + resume details
 ```
 
-## Database
+The analysis is generated during upload and saved with the resume, allowing the dashboard to display scores immediately.
+
+### 3.3 Database relationships
 
 ```mermaid
 erDiagram
-    users ||--o{ resumes : uploads
-    users ||--o{ ai_usage : uses
+    users ||--o{ resumes : owns
+    users ||--o{ ai_usage : consumes
     resumes ||--o| resume_analyses : has
-    resumes ||--o| job_suggestions : has
+    resumes ||--o| job_suggestions : caches
 
     users {
         BIGINT id PK
         VARCHAR email UK
         VARCHAR password_hash
         VARCHAR name
+        TIMESTAMP created_at
     }
     resumes {
         BIGINT id PK
         BIGINT user_id FK
         VARCHAR original_file_name
+        VARCHAR content_type
         TEXT extracted_text
         BYTEA file_data
-        VARCHAR content_type
         TEXT ai_summary
+        TIMESTAMP created_at
     }
     resume_analyses {
+        BIGINT id PK
         BIGINT resume_id FK
         INT overall_score
+        INT completeness_score
+        INT skills_score
+        INT projects_score
+        INT experience_score
+        INT education_score
         TEXT findings_json
+        TIMESTAMP created_at
     }
     ai_usage {
+        BIGINT id PK
         BIGINT user_id FK
         TIMESTAMP created_at
     }
     job_suggestions {
+        BIGINT id PK
         BIGINT resume_id FK
         TEXT response_json
+        TIMESTAMP created_at
     }
 ```
 
-`resume_analyses` also stores the five section scores; every table has `id` and `created_at`. V8 added `file_data`, `content_type` and `ai_summary` to `resumes` and dropped the old `ai_responses` table. Deleting a resume also deletes its analysis and cached job suggestions (ON DELETE CASCADE).
+Each user can own multiple resumes and AI usage records. A resume can have a saved analysis and cached job suggestions. Resume-related records are deleted when their parent resume is deleted, according to the configured foreign-key cascade rules. Flyway migrations define the actual database schema.
 
-## Project structure
+---
 
+## 4. Setup
+
+### Prerequisites
+
+- Docker
+- Node.js and npm
+- A PostgreSQL database
+- JDK 21 only if running the backend without Docker
+
+### 4.1 Configure PostgreSQL and backend variables
+
+Create an empty PostgreSQL database, for example `resqora`. Create `resqora-backend/.env` with your own values:
+
+```dotenv
+RESQORA_DB_URL=jdbc:postgresql://YOUR_DB_HOST:5432/resqora
+RESQORA_DB_USERNAME=YOUR_DB_USERNAME
+RESQORA_DB_PASSWORD=YOUR_DB_PASSWORD
+RESQORA_JWT_SECRET=REPLACE_WITH_A_SECURE_SECRET_AT_LEAST_32_CHARACTERS_LONG
+# Optional: enables Gemini summary and chat
+GEMINI_API_KEY=
 ```
-backend/
-  src/main/java/com/resqora/resqora_backend/
-    config/        security, CORS, password encoder, OpenAPI
-    controller/    REST endpoints
-    dto/           request/response records
-    entity/        JPA entities
-    exception/     custom exceptions + GlobalExceptionHandler
-    model/         parsed resume and analysis records
-    repository/    Spring Data JPA repositories
-    security/      JWT filter, JSON 401 entry point
-    service/       business logic (extraction, parser, analysis, match, ai, jobs)
-  src/main/resources/db/migration/   Flyway V1-V8
-  src/test/                          unit and integration tests
-resqora-frontend/
-  src/api.js        backend calls and error handling (backend address from VITE_API_URL)
-  src/auth.jsx      login state (token in localStorage)
-  src/features.js   feature flags (job suggestions are off for now)
-  src/pages/        Home, Login, Register, Dashboard, ResumeDetail, Account, NotFound
-  src/components/   shared UI parts (account menu, auth layout, job list)
+
+> Use a secure JWT secret of at least 32 characters. Never commit `.env`, database credentials, JWT secrets, or API keys. If PostgreSQL runs on your host while the backend runs in Docker Desktop, `host.docker.internal` can be used as the database hostname. Replace it if your deployment uses a different network setup.
+
+### 4.2 Build and run the backend with Docker
+
+From the repository root:
+
+```bash
+cd resqora-backend
+docker build -t resqora-backend .
+docker run --rm --name resqora-backend --env-file .env -p 8080:8080 resqora-backend
 ```
 
-## How to run
+The multi-stage Dockerfile builds the application with a Java 21 JDK image and runs the JAR with a Java 21 JRE image. The API listens on port `8080` by default, and Flyway applies database migrations during startup.
 
-Prerequisites: JDK 21, PostgreSQL (with an empty database created).
+<details>
+<summary><b>Run without Docker</b></summary>
 
-Environment variables for the backend:
+<br/>
 
-| Variable | Required | Default | Purpose |
-|---|---|---|---|
-| `RESQORA_DB_URL` | yes | - | e.g. `jdbc:postgresql://localhost:5432/resqora` |
-| `RESQORA_DB_USERNAME` | yes | - | database user |
-| `RESQORA_DB_PASSWORD` | yes | - | database password |
-| `RESQORA_JWT_SECRET` | yes | - | JWT signing key, at least 32 characters |
-| `RESQORA_JWT_EXPIRATION_MS` | no | 3600000 | token lifetime (1 hour) |
-| `RESQORA_CORS_ORIGINS` | no | http://localhost:5173 | allowed frontend origin(s) |
-| `GEMINI_API_KEY` | no | empty | enables AI summary and chat; without it they return 503 |
-| `GEMINI_MODEL` | no | gemini-3.5-flash-lite | Gemini model |
-| `RESQORA_GEMINI_BASE_URL` | no | https://generativelanguage.googleapis.com/v1beta | Gemini API base URL |
-| `RESQORA_AI_DAILY_CAP` | no | 50 | max AI calls per day for the whole app |
-| `RESQORA_AI_USER_DAILY_LIMIT` | no | 10 | max AI calls per user per day |
-| `RESQORA_TIMEZONE` | no | Asia/Kolkata | when "today" starts for AI limits |
-| `ADZUNA_APP_ID` | no | empty | Adzuna app id; without it job suggestions return 503 |
-| `ADZUNA_APP_KEY` | no | empty | Adzuna app key |
-| `RESQORA_JOBS_COUNTRY` | no | in | Adzuna country code for job search |
-| `RESQORA_LOGIN_MAX_PER_EMAIL` | no | 5 | failed logins per email per window |
-| `RESQORA_LOGIN_MAX_PER_IP` | no | 20 | failed logins per IP per window |
-| `RESQORA_LOGIN_WINDOW_MINUTES` | no | 15 | login lock window |
-| `RESQORA_ACCOUNT_MAX_PASSWORD_ATTEMPTS` | no | 5 | wrong passwords for password change / account delete per window |
-| `RESQORA_ACCOUNT_PASSWORD_WINDOW_MINUTES` | no | 15 | password lock window |
-| `RESQORA_DEMO_ENABLED` | no | false | create/reset `demo@resqora.app` with 3 analysed resumes on every startup |
-| `RESQORA_SWAGGER_ENABLED` | no | true | set `false` on a public deployment to hide Swagger UI and `/v3/api-docs` |
-| `RESQORA_DEMO_PASSWORD` | no | Demo1234 | demo account password (change it on a public deployment, or show it on the home page on purpose) |
+Configure the same environment variables and use the Maven Wrapper:
 
-Backend (port 8080, Flyway creates the tables on first start):
-
-```
+```bash
 cd resqora-backend
 ./mvnw spring-boot:run
 ```
 
-Frontend (port 5173, `/api` is proxied to 8080 during development):
+On Windows PowerShell, run `.\mvnw.cmd spring-boot:run` from `resqora-backend`.
 
-```
+</details>
+
+### 4.3 Run the frontend
+
+Open another terminal from the repository root:
+
+```bash
 cd resqora-frontend
 npm install
 npm run dev
 ```
 
-Open http://localhost:5173. Run only one copy of the frontend: the backend only allows port 5173 unless `RESQORA_CORS_ORIGINS` is changed. For a hosted build, copy `.env.example` to `.env`, set `VITE_API_URL` to the backend address (without `/api`), and run `npm run build`; the site is in `dist/`.
+Open [http://localhost:5173](http://localhost:5173). Vite proxies `/api` requests to `http://localhost:8080` during development. The backend's `RESQORA_CORS_ORIGINS` must include the frontend origin when it differs from the default.
 
-Swagger UI is at http://localhost:8080/swagger-ui.html.
+For a production frontend build, set `VITE_API_URL` to the backend base URL (without `/api`), then run:
 
-## API endpoints
-
-All endpoints except register, login and Swagger need `Authorization: Bearer <token>`.
-
-| Method | Path | Description | Success |
-|---|---|---|---|
-| POST | /api/auth/register | create account (name, email, password) | 201 |
-| POST | /api/auth/login | get JWT and name | 200 |
-| GET | /api/auth/me | current user | 200 |
-| PATCH | /api/auth/me | change own name | 200 |
-| PUT | /api/auth/password | change password (current password required) | 204 |
-| DELETE | /api/auth/me | delete own account (password required) | 204 |
-| GET | /api/resumes | list own resumes with count, limit and saved score | 200 |
-| POST | /api/resumes/upload | upload PDF/DOCX (multipart field `file`) | 201 |
-| DELETE | /api/resumes/{id} | delete own resume | 204 |
-| GET | /api/resumes/{id}/parsed | parsed sections | 200 |
-| GET | /api/resumes/{id}/analysis | scores and findings | 200 |
-| POST | /api/resumes/{id}/match | rule-based match against a job description (no AI) | 200 |
-| GET | /api/resumes/{id}/file | original PDF/DOCX (owner only, max 2 MB) | 200 |
-| GET | /api/resumes/{id}/summary | AI summary, saved per resume: `{summary, cached}` | 200 |
-| POST | /api/resumes/{id}/chat | `{message (1-500), history (max 6), jobDescription (optional, max 5000)}` -> `{reply, remainingToday}` | 200 |
-| GET | /api/resumes/{id}/jobs | job suggestions (needs Adzuna keys; source being replaced) | 200 |
-| GET | /api/ai/usage | own AI calls used and left today | 200 |
-
-Errors always look like `{"status": 409, "error": "Conflict", "message": "Email already exists"}`. Common codes: 400 validation, 401 not logged in or wrong login, 404 not found or not yours, 409 duplicate email or resume limit, 429 AI limit, too many logins or wrong passwords (with `Retry-After`), 503 AI or job search not available. Full shapes are in `API-SHAPES.md`.
-
-## Testing
-
+```bash
+npm run build
 ```
+
+Vite writes the static output to `resqora-frontend/dist/`.
+
+### 4.4 API docs and tests
+
+With the backend running, open [Swagger UI](http://localhost:8080/swagger-ui.html). Use **Authorize** to test endpoints that require a JWT.
+
+Run the backend tests:
+
+```bash
 cd resqora-backend
 ./mvnw test
 ```
 
-205 tests: unit tests for extraction, parsing, scoring and matching (including 14 hard-case sample resumes in `src/test/resources/samples`: two- and three-column PDFs, DOCX tables, nested tables and text boxes, emoji headings and ➤ bullets, scanned PDF, unusual headings, wrapped bullets, mixed dates), and integration tests with MockMvc against an H2 in-memory database (Flyway migrations run on H2 too). The AI and job search clients are replaced by fakes in tests, so no network or API key is needed.
+On Windows, use `.\mvnw.cmd test`. The tests use H2 and test doubles for external services, so they do not require a real Gemini key or Jobicy API call.
 
-## AI usage limits
+### Configuration
 
-AI is optional and uses the Gemini free tier. The resume summary is made once per resume and saved; making it uses one AI call, reading it later is free. Each chat message is a real call; each user gets `RESQORA_AI_USER_DAILY_LIMIT` (10) AI calls a day. Calls are reserved before Gemini is asked and refunded if the call fails. The whole app makes at most `RESQORA_AI_DAILY_CAP` (50) a day. Going over the per-user limit returns 429 with `Retry-After`; reaching the app-wide cap returns 503, the same as a Gemini error or a missing key. Days reset at midnight IST. Scores and job matching never depend on AI. The AI rules are sent as a Gemini system instruction, and the resume, job description, chat history and question are sent as delimited quoted data that the AI is told never to obey.
+<details>
+<summary><b>Environment variables</b></summary>
 
-## Known limitations
+<br/>
 
-- No refresh token: when the JWT expires (1 h) the user logs in again.
-- Analysis runs synchronously during upload, so a large file makes the upload slower.
-- The login limiter is in memory, so it resets when the server restarts and is not shared between servers.
-- Scanned (image-only) PDFs are rejected with 422; there is no OCR.
-- Extraction is rule-based (pattern matching on text), not real understanding: unusual layouts can still be misread. The "couldn't read this layout" warning covers the worst cases.
-- Dates are recognised in many formats (03/2021, Mar '19, till date, Hindi month names) but returned as written, not normalised.
+| Variable | Default | Purpose |
+|---|---|---|
+| `RESQORA_JWT_EXPIRATION_MS` | `3600000` | JWT lifetime (one hour) |
+| `RESQORA_CORS_ORIGINS` | `http://localhost:5173` | Allowed frontend origin(s) |
+| `PORT` | `8080` | HTTP port |
+| `RESQORA_DB_POOL_SIZE` | `3` | Maximum database connection pool size |
+| `GEMINI_API_KEY` | Empty | Enables AI summaries and chat |
+| `GEMINI_MODEL` | `gemini-3.5-flash-lite` | Gemini model name |
+| `RESQORA_AI_USER_DAILY_LIMIT` | `10` | AI calls per user per day |
+| `RESQORA_AI_DAILY_CAP` | `50` | AI calls across the app per day |
+| `RESQORA_TIMEZONE` | `Asia/Kolkata` | Time zone for daily AI limits |
+| `RESQORA_JOBICY_BASE_URL` | `https://jobicy.com/api/v2` | Jobicy API base URL |
+| `RESQORA_SWAGGER_ENABLED` | `true` | Enables/disables Swagger UI and API docs |
+
+Login throttling and demo-account options are also configurable through environment variables; see `resqora-backend/src/main/resources/application.properties` for their defaults.
+
+</details>
+
+---
+
+## 5. Limitations
+
+- Scanned or image-only PDFs are rejected with `422 Unprocessable Entity`; OCR is not implemented.
+- Parsing uses text patterns and heuristics. Unusual layouts can still be misread.
+- Resume analysis runs synchronously during upload, so larger files can take longer to process.
+- Job suggestions focus on remote jobs open to the Asia-Pacific region, not all office-based jobs in Indian cities.
+- Job results are cached in memory for 30 minutes and per resume for 12 hours; caches are not shared across backend instances.
+- JWTs expire after one hour by default. Refresh tokens are not implemented.
+- Login throttling is in memory, resets on restart, and is not shared across backend instances.
+- AI features send resume text, and any supplied job description or chat context, to Google Gemini. AI is optional; scoring and job matching do not depend on it.
+
+---
+
+<div align="center">
+<sub>If Resqora helped you, drop a star on the repo.</sub>
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:06b6d4,100:6366f1&height=120&section=footer" width="100%" alt="footer" />
+</div>
