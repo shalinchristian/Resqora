@@ -1,0 +1,42 @@
+
+name: Resqora Frontend CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "resqora-frontend/**"
+      - ".github/workflows/resqora-frontend-ci.yml"
+
+  pull_request:
+    branches: [main]
+    paths:
+      - "resqora-frontend/**"
+      - ".github/workflows/resqora-frontend-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: resqora-frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: resqora-frontend
+        run: npm ci
+
+      - name: Build production bundle
+        working-directory: resqora-frontend
+        run: npm run build
