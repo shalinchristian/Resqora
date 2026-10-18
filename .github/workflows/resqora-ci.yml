@@ -16,7 +16,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: backend
+        working-directory: resqora-backend
 
     steps:
       - name: Checkout code
