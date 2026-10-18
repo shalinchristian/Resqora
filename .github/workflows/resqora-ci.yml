@@ -28,7 +28,7 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
-          cache-dependency-path: resqopra-backend/pom.xml
+          cache-dependency-path: resqora-backend/pom.xml
 
       - name: Run tests
         run: |
