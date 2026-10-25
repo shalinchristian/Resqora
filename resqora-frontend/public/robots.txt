@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /account
+Disallow: /resumes/
+
+Sitemap: https://resqora.xyz/sitemap.xml

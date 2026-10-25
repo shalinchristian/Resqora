@@ -12,7 +12,28 @@
       const t = localStorage.getItem('resqora_theme')
       if (t === 'dark' || (!t && matchMedia('(prefers-color-scheme: dark)').matches)) document.documentElement.classList.add('dark')
     </script>
-    <title>Resqora</title>
+    <title>Resqora: Free Resume Analyzer and Job Match</title>
+    <meta name="description" content="Upload your resume (PDF or DOCX) to get a free score, clear fixes and matching remote jobs. No sign-up fees, no card." />
+    <link rel="canonical" href="https://resqora.xyz/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Resqora" />
+    <meta property="og:url" content="https://resqora.xyz/" />
+    <meta property="og:title" content="Resqora: Free Resume Analyzer and Job Match" />
+    <meta property="og:description" content="Upload your resume (PDF or DOCX) to get a free score, clear fixes and matching remote jobs. No sign-up fees, no card." />
+    <meta property="og:image" content="https://resqora.xyz/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <!-- Google Analytics: only on the live site; page views are sent from App.jsx with resume ids hidden -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-DYN7S1TZ1G"></script>
+    <script>
+      window.dataLayer = window.dataLayer || []
+      function gtag() { dataLayer.push(arguments) }
+      if (/(^|\.)resqora\.xyz$/.test(location.hostname)) {
+        gtag('js', new Date())
+        gtag('config', 'G-DYN7S1TZ1G', { send_page_view: false })
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
