@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom'
 import AccountMenu from './components/AccountMenu.jsx'
 import { useAuth } from './auth.jsx'
@@ -60,6 +60,12 @@ export default function App() {
   const { user } = useAuth()
   const { pathname } = useLocation()
 
+  // Google Analytics page view on every route change; resume ids are replaced so GA never sees them
+  useEffect(() => {
+    const page = pathname.replace(/^\/resumes\/[^/]+/, '/resumes/:id')
+    window.gtag?.('event', 'page_view', { page_path: page, page_location: location.origin + page, page_title: document.title })
+  }, [pathname])
+
   return (
     <div className="min-h-screen flex flex-col">
       <header className="border-b border-line bg-paper sticky top-0 z-10">
@@ -88,7 +94,7 @@ export default function App() {
       </main>
 
       <footer className="border-t border-line">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5 text-xs text-faint">© 2026 Resqora</div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5 text-xs text-faint">© 2026 Resqora. This site uses Google Analytics cookies to count visits; your resume content is never sent to it.</div>
       </footer>
     </div>
   )
