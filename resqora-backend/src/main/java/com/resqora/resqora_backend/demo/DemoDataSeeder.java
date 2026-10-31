@@ -65,13 +65,15 @@ public class DemoDataSeeder implements ApplicationRunner {
         User user = transactionTemplate.execute(status -> {
             User existing = userRepository.findByEmail(DEMO_EMAIL).orElse(null);
             if (existing == null) {
-                return userRepository.saveAndFlush(
-                        new User(DEMO_EMAIL, passwordEncoder.encode(demoPassword), DEMO_NAME));
+                User demo = new User(DEMO_EMAIL, passwordEncoder.encode(demoPassword), DEMO_NAME);
+                demo.setEmailVerified(true); // demo@resqora.app has no inbox; it must log in without a code
+                return userRepository.saveAndFlush(demo);
             }
             // reset: analyses, AI answers and job suggestions cascade from resumes
             resumeRepository.deleteAll(resumeRepository.findByUserIdOrderByCreatedAtDescIdDesc(existing.getId()));
             aiUsageRepository.deleteByUserId(existing.getId());
             existing.setName(DEMO_NAME);
+            existing.setEmailVerified(true);
             existing.setPasswordHash(passwordEncoder.encode(demoPassword));
             return userRepository.saveAndFlush(existing);
         });

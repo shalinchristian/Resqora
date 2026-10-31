@@ -24,6 +24,10 @@ public class User {
     @Column(length = 100)
     private String name;
 
+    // false until the user types the code we emailed them (accounts from before V9 are true)
+    @Column(name = "email_verified", nullable = false)
+    private boolean emailVerified;
+
     protected User() {
     }
 
@@ -55,6 +59,14 @@ public class User {
 
     public void setPasswordHash(String passwordHash) {
         this.passwordHash = passwordHash;
+    }
+
+    public boolean isEmailVerified() {
+        return emailVerified;
+    }
+
+    public void setEmailVerified(boolean emailVerified) {
+        this.emailVerified = emailVerified;
     }
 
     public void setName(String name) {
