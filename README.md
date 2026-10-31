@@ -4,7 +4,7 @@
   <p><strong>Resume analysis. Structured feedback. Better job matching.</strong></p>
   <p>A resume analysis application built with Java, Spring Boot, React, and PostgreSQL.</p>
   <p>
-    <a href="https://resqora-1.onrender.com"><img src="https://img.shields.io/badge/LIVE_DEMO-OPEN_APP-0F766E?style=for-the-badge" alt="Live demo" /></a>
+    <a href="https://resqora.xyz"><img src="https://img.shields.io/badge/LIVE_DEMO-OPEN_APP-0F766E?style=for-the-badge" alt="Live demo" /></a>
     <a href="https://hits.sh/github.com/shalinchristian/Resqora/"><img src="https://hits.sh/github.com/shalinchristian/Resqora.svg?style=for-the-badge&label=REPO%20VIEWS&color=0F766E" alt="Repository view count" /></a>
   </p>
 </div>
