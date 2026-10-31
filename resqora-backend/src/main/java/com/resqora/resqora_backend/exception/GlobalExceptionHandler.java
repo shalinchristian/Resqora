@@ -95,6 +95,24 @@ public class GlobalExceptionHandler {
                 .body(body);
     }
 
+    @ExceptionHandler(TooManyCodeRequestsException.class)
+    public ResponseEntity<ErrorResponse> handleTooManyCodeRequests(TooManyCodeRequestsException exception) {
+        ErrorResponse body = new ErrorResponse(429, HttpStatus.TOO_MANY_REQUESTS.getReasonPhrase(), exception.getMessage());
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(exception.getRetryAfterSeconds()))
+                .body(body);
+    }
+
+    @ExceptionHandler(InvalidCodeException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidCode(InvalidCodeException exception) {
+        return errorResponse(HttpStatus.BAD_REQUEST, exception.getMessage());
+    }
+
+    @ExceptionHandler(EmailNotVerifiedException.class)
+    public ResponseEntity<ErrorResponse> handleEmailNotVerified(EmailNotVerifiedException exception) {
+        return errorResponse(HttpStatus.FORBIDDEN, exception.getMessage());
+    }
+
     @ExceptionHandler(ResumeNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleResumeNotFound(ResumeNotFoundException exception) {
         return errorResponse(HttpStatus.NOT_FOUND, exception.getMessage());

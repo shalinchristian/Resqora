@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom'
 import AccountMenu from './components/AccountMenu.jsx'
 import { useAuth } from './auth.jsx'
 import mark from './assets/resqora-mark.svg'
 import Login from './pages/Login.jsx'
 import Register from './pages/Register.jsx'
+import VerifyEmail from './pages/VerifyEmail.jsx'
+import ForgotPassword from './pages/ForgotPassword.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import ResumeDetail from './pages/ResumeDetail.jsx'
 import Home from './pages/Home.jsx'
@@ -60,6 +62,12 @@ export default function App() {
   const { user } = useAuth()
   const { pathname } = useLocation()
 
+  // send a GA page view on every route change (resume ids are hidden)
+  useEffect(() => {
+    const page = pathname.replace(/^\/resumes\/[^/]+/, '/resumes/:id')
+    window.gtag?.('event', 'page_view', { page_path: page, page_location: location.origin + page, page_title: document.title })
+  }, [pathname])
+
   return (
     <div className="min-h-screen flex flex-col">
       <header className="border-b border-line bg-paper sticky top-0 z-10">
@@ -80,6 +88,8 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/" element={<HomeOrDashboard />} />
           <Route path="/account" element={<Protected><Account /></Protected>} />
           <Route path="/resumes/:id" element={<Protected><ResumeDetail /></Protected>} />
@@ -88,7 +98,7 @@ export default function App() {
       </main>
 
       <footer className="border-t border-line">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5 text-xs text-faint">© 2026 Resqora</div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5 text-xs text-faint">© 2026 Resqora. This site uses Google Analytics cookies to count visits; your resume content is never sent to it.</div>
       </footer>
     </div>
   )

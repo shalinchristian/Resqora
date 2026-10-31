@@ -25,10 +25,16 @@ export function AuthProvider({ children }) {
     setUser(await api.me())
   }
 
+  // used after email verification, which returns a token like /login
+  const loginWithToken = async (token) => {
+    setToken(token)
+    setUser(await api.me())
+  }
+
   const logout = () => { clearToken(); setUser(null) }
 
   return (
-    <AuthContext.Provider value={{ user, setUser, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, setUser, loading, login, loginWithToken, logout }}>
       {children}
     </AuthContext.Provider>
   )

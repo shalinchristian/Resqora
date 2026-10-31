@@ -24,9 +24,14 @@ export default function Register() {
     if (password !== confirm) return setError('Passwords do not match.')
     setError(''); setBusy(true)
     try {
-      await api.register(name.trim(), email.trim().toLowerCase(), password)
-      await login(email, password)
-      navigate('/')
+      const clean = email.trim().toLowerCase()
+      const res = await api.register(name.trim(), clean, password)
+      if (res?.token) {
+        await login(clean, password)
+        navigate('/')
+      } else {
+        navigate('/verify-email', { state: { email: clean, sent: true } })
+      }
     } catch (err) {
       setError(err.status === 409 ? 'That email is already registered.' : err.message)
     } finally {

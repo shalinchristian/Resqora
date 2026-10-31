@@ -9,9 +9,10 @@ export const setToken = (t) => localStorage.setItem(TOKEN_KEY, t)
 export const clearToken = () => localStorage.removeItem(TOKEN_KEY)
 
 export class ApiError extends Error {
-  constructor(status, message) {
+  constructor(status, message, data = null) {
     super(message)
     this.status = status
+    this.code = data?.error || data?.code || null
   }
 }
 
@@ -40,7 +41,7 @@ async function request(path, { method = 'GET', body, isForm = false } = {}) {
       clearToken()
       window.dispatchEvent(new Event('resqora:logout'))
     }
-    throw new ApiError(res.status, message)
+    throw new ApiError(res.status, message, data)
   }
   return data
 }
@@ -48,6 +49,10 @@ async function request(path, { method = 'GET', body, isForm = false } = {}) {
 export const api = {
   register: (name, email, password) => request('/api/auth/register', { method: 'POST', body: { name, email, password } }),
   login: (email, password) => request('/api/auth/login', { method: 'POST', body: { email, password } }),
+  verifyEmail: (email, code) => request('/api/auth/verify-email', { method: 'POST', body: { email, code } }),
+  resendCode: (email) => request('/api/auth/resend-code', { method: 'POST', body: { email } }),
+  forgotPassword: (email) => request('/api/auth/forgot-password', { method: 'POST', body: { email } }),
+  resetPassword: (email, code, newPassword) => request('/api/auth/reset-password', { method: 'POST', body: { email, code, newPassword } }),
   me: () => request('/api/auth/me'),
   updateMe: (name) => request('/api/auth/me', { method: 'PATCH', body: { name } }),
   changePassword: (currentPassword, newPassword) => request('/api/auth/password', { method: 'PUT', body: { currentPassword, newPassword } }),

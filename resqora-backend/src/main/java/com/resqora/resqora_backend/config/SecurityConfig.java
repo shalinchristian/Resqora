@@ -42,7 +42,8 @@ public class SecurityConfig {
                         // keep the real status on /error forwards (500/400), otherwise they show up as 401
                         .requestMatchers("/error").permitAll()
                         // any method, so GET /api/auth/login gives 405 instead of 401
-                        .requestMatchers("/api/auth/register", "/api/auth/login")
+                        .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/verify-email",
+                                "/api/auth/resend-code", "/api/auth/forgot-password", "/api/auth/reset-password")
                         .permitAll()
                         // Swagger UI and the OpenAPI JSON are public so the docs page can load
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**")
