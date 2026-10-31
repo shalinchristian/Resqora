@@ -5,6 +5,8 @@ import { useAuth } from './auth.jsx'
 import mark from './assets/resqora-mark.svg'
 import Login from './pages/Login.jsx'
 import Register from './pages/Register.jsx'
+import VerifyEmail from './pages/VerifyEmail.jsx'
+import ForgotPassword from './pages/ForgotPassword.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import ResumeDetail from './pages/ResumeDetail.jsx'
 import Home from './pages/Home.jsx'
@@ -86,6 +88,8 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/" element={<HomeOrDashboard />} />
           <Route path="/account" element={<Protected><Account /></Protected>} />
           <Route path="/resumes/:id" element={<Protected><ResumeDetail /></Protected>} />

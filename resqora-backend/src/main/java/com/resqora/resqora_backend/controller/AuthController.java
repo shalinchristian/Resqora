@@ -2,7 +2,10 @@ package com.resqora.resqora_backend.controller;
 
 import com.resqora.resqora_backend.dto.ChangePasswordRequest;
 import com.resqora.resqora_backend.dto.DeleteAccountRequest;
+import com.resqora.resqora_backend.dto.EmailRequest;
 import com.resqora.resqora_backend.dto.LoginRequest;
+import com.resqora.resqora_backend.dto.ResetPasswordRequest;
+import com.resqora.resqora_backend.dto.VerifyEmailRequest;
 import com.resqora.resqora_backend.dto.LoginResponse;
 import com.resqora.resqora_backend.dto.MeResponse;
 import com.resqora.resqora_backend.dto.RegisterResponse;
@@ -34,10 +37,36 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    public ResponseEntity<RegisterResponse> register(@Valid @RequestBody RegistrationRequest request) {
-        User user = authService.register(request);
+    public ResponseEntity<RegisterResponse> register(@Valid @RequestBody RegistrationRequest request,
+                                                     HttpServletRequest httpRequest) {
+        User user = authService.register(request, httpRequest.getRemoteAddr());
+        // emailVerified false -> the frontend shows the "enter the code we emailed you" screen
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(new RegisterResponse(user.getId(), user.getEmail(), user.getName()));
+                .body(new RegisterResponse(user.getId(), user.getEmail(), user.getName(), user.isEmailVerified()));
+    }
+
+    @PostMapping("/verify-email")
+    public LoginResponse verifyEmail(@Valid @RequestBody VerifyEmailRequest request) {
+        return authService.verifyEmail(request);
+    }
+
+    // 202 Accepted every time: the answer never says whether the email has an account
+    @PostMapping("/resend-code")
+    public ResponseEntity<Void> resendVerification(@Valid @RequestBody EmailRequest request, HttpServletRequest httpRequest) {
+        authService.resendVerification(request.email(), httpRequest.getRemoteAddr());
+        return ResponseEntity.accepted().build();
+    }
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<Void> forgotPassword(@Valid @RequestBody EmailRequest request, HttpServletRequest httpRequest) {
+        authService.forgotPassword(request.email(), httpRequest.getRemoteAddr());
+        return ResponseEntity.accepted().build();
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<Void> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        authService.resetPassword(request);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/login")
