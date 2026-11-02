@@ -4,6 +4,8 @@ import { createPortal } from 'react-dom'
 import { api } from '../api.js'
 import { FEATURES } from '../features.js'
 import Jobs from '../components/Jobs.jsx'
+import ChatPanel from '../components/ChatPanel.jsx'
+import { useAuth } from '../auth.jsx'
 import { useCountUp, useMounted } from '../hooks.js'
 import { Section, Button, TextArea, ErrorBox, Chip, toneFor } from '../components/ui.jsx'
 
@@ -182,11 +184,14 @@ function MatchBox({ id, jd, setJd, open, setOpen }) {
 }
 
 function AiSummary({ id }) {
+  const { user } = useAuth()
+  const aiOn = user?.aiEnabled !== false
   const [state, setState] = useState({ loading: true })
   useEffect(() => {
+    if (!aiOn) return
     api.summary(id).then((d) => setState({ text: d.summary })).catch((e) => setState({ hidden: e.status === 503, error: e.status !== 503 }))
-  }, [id])
-  if (state.hidden || state.error) return null
+  }, [id, aiOn])
+  if (!aiOn || state.hidden || state.error) return null
   return (
     <div className="bg-surface border border-line rounded-xl px-5 py-4">
       <p className="text-xs uppercase tracking-wide text-muted">Summary</p>
@@ -328,63 +333,10 @@ const STARTERS = [
 ]
 
 function Chat({ id, jd, openJobBox }) {
-  const [messages, setMessages] = useState([])
-  const [input, setInput] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const [left, setLeft] = useState(null)
-  const end = useRef(null)
-
-  useEffect(() => { end.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }) }, [messages, busy])
-
-  const send = async (text, needsJd) => {
-    text = text.trim()
-    if (!text || busy) return
-    if (needsJd && !jd.trim()) { openJobBox(); return setError('Paste the job post in "Compare with a job" first.') }
-    setError(''); setInput('')
-    const history = messages.slice(-6).map((m) => ({ role: m.role, text: m.text.slice(0, 500) }))
-    setMessages((m) => [...m, { role: 'user', text }])
-    setBusy(true)
-    try {
-      const r = await api.chat(id, text, history, jd.trim().slice(0, 5000) || undefined)
-      setMessages((m) => [...m, { role: 'model', text: r.reply }])
-      setLeft(r.remainingToday)
-    } catch (e) {
-      setMessages((m) => m.slice(0, -1)); setInput(text)
-      setError(e.status === 429 ? "You've used today's AI messages. Try again tomorrow."
-        : e.status === 503 ? 'AI chat not available right now.' : e.message)
-    } finally { setBusy(false) }
-  }
-
   return (
-    <Section title="Ask about this resume" note={left != null ? `${left} messages left today` : '10 AI messages a day'}>
-      {messages.length === 0 && (
-        <div className="flex flex-wrap gap-2">
-          {STARTERS.map((st) => (
-            <button key={st.text} onClick={() => send(st.text, st.needsJd)} disabled={busy}
-              className="text-sm text-left rounded-lg border border-line px-3 py-1.5 hover:bg-sunken transition-colors disabled:opacity-40">{st.text}</button>
-          ))}
-        </div>
-      )}
-      {messages.length > 0 && (
-        <div className="space-y-3 max-h-[28rem] overflow-y-auto pr-1" aria-live="polite">
-          {messages.map((m, i) => (
-            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : ''}`}>
-              <p className={`max-w-[85%] text-sm rounded-xl px-3.5 py-2 whitespace-pre-line break-words ${m.role === 'user' ? 'bg-ink text-paper' : 'bg-sunken'}`}>{m.text}</p>
-            </div>
-          ))}
-          {busy && <p className="text-xs text-muted">Writing a reply...</p>}
-          <div ref={end} />
-        </div>
-      )}
-      <form onSubmit={(e) => { e.preventDefault(); send(input) }} className="mt-4 flex gap-2">
-        <label htmlFor="chat-input" className="sr-only">Your question</label>
-        <input id="chat-input" value={input} maxLength={500} onChange={(e) => setInput(e.target.value)} placeholder="Ask a question about this resume"
-          className="flex-1 min-w-0 rounded-lg border border-line bg-surface px-3 h-10 text-sm outline-none focus:border-accent" />
-        <Button type="submit" variant="accent" className="h-10" disabled={busy || !input.trim()}>Send</Button>
-      </form>
-      {error && <div className="mt-3"><ErrorBox message={error} /></div>}
-    </Section>
+    <ChatPanel title="Ask about this resume" placeholder="Ask a question about this resume" starters={STARTERS}
+      beforeSend={(st) => { if (st?.needsJd && !jd.trim()) { openJobBox(); return 'Paste the job post in "Compare with a job" first.' } }}
+      send={(text, history) => api.chat(id, text, history, jd.trim().slice(0, 5000) || undefined)} />
   )
 }
 

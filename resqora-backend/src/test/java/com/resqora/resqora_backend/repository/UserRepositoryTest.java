@@ -17,6 +17,5 @@ class UserRepositoryTest {
         userRepository.save(new User("person@example.com", "hashed-password"));
 
         assertTrue(userRepository.findByEmail("person@example.com").isPresent());
-        assertTrue(userRepository.existsByEmail("person@example.com"));
     }
 }

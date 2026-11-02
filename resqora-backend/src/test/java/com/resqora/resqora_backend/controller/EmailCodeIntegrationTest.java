@@ -18,12 +18,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -40,7 +38,7 @@ class EmailCodeIntegrationTest {
         final Map<String, Integer> sent = new ConcurrentHashMap<>();
 
         @Override
-        public void send(String to, String subject, String text) {
+        public void send(String to, String subject, String text, String html) {
             Matcher m = Pattern.compile("\\b(\\d{6})\\b").matcher(text);
             assertTrue(m.find(), "email must contain a 6-digit code");
             lastCode.put(to, m.group(1));

@@ -20,9 +20,9 @@ class AuthControllerTest {
 
     @Test
     void returnsAuthenticatedUserDetails() {
-        when(authService.me(42L)).thenReturn(new MeResponse(42L, "user@example.com", "Asha Rao"));
+        when(authService.me(42L)).thenReturn(new MeResponse(42L, "user@example.com", "Asha Rao", true));
 
-        assertEquals(new MeResponse(42L, "user@example.com", "Asha Rao"), authController.me(authenticationFor(42L)));
+        assertEquals(new MeResponse(42L, "user@example.com", "Asha Rao", true), authController.me(authenticationFor(42L)));
     }
 
     @Test

@@ -26,12 +26,14 @@ public class DocumentTextExtractionService {
             throw new IllegalArgumentException("Only PDF and DOCX files are supported");
         }
 
+        // both formats go through the same normaliser so a PDF and a DOCX of the same resume
+        // end up as the same text (and get the same score)
         try (InputStream inputStream = file.getInputStream()) {
             if (fileName.toLowerCase(Locale.ROOT).endsWith(".pdf")) {
-                return pdfTextExtractor.extract(inputStream);
+                return ResumeTextNormalizer.normalize(pdfTextExtractor.extract(inputStream));
             }
             if (fileName.toLowerCase(Locale.ROOT).endsWith(".docx")) {
-                return docxTextExtractor.extract(inputStream);
+                return ResumeTextNormalizer.normalize(docxTextExtractor.extract(inputStream));
             }
             throw new IllegalArgumentException("Only PDF and DOCX files are supported");
         } catch (IOException exception) {

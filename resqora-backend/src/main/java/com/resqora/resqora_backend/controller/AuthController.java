@@ -10,7 +10,7 @@ import com.resqora.resqora_backend.dto.LoginResponse;
 import com.resqora.resqora_backend.dto.MeResponse;
 import com.resqora.resqora_backend.dto.RegisterResponse;
 import com.resqora.resqora_backend.dto.RegistrationRequest;
-import com.resqora.resqora_backend.dto.UpdateNameRequest;
+import com.resqora.resqora_backend.dto.UpdateMeRequest;
 import com.resqora.resqora_backend.entity.User;
 import com.resqora.resqora_backend.service.AuthService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -81,8 +81,8 @@ public class AuthController {
     }
 
     @PatchMapping("/me")
-    public MeResponse updateMe(@Valid @RequestBody UpdateNameRequest request, Authentication authentication) {
-        return authService.updateName((Long) authentication.getPrincipal(), request.name());
+    public MeResponse updateMe(@Valid @RequestBody UpdateMeRequest request, Authentication authentication) {
+        return authService.updateMe((Long) authentication.getPrincipal(), request);
     }
 
     @PutMapping("/password")

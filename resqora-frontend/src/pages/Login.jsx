@@ -54,6 +54,7 @@ export default function Login() {
         </div>
         <ErrorBox message={error} />
         <Button type="submit" disabled={busy} variant="accent" className="w-full h-10">{busy ? 'Logging in...' : 'Log in'}</Button>
+        <p className="text-xs text-muted text-center">Waking the server up might take a few seconds. Please wait.</p>
       </form>
     </AuthShell>
   )

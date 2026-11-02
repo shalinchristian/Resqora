@@ -12,8 +12,6 @@ import java.util.Optional;
 public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByEmail(String email);
 
-    boolean existsByEmail(String email);
-
     // SELECT ... FOR UPDATE on the user row so one user's uploads go one at a time and the 5 slot check can't be raced
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select u from User u where u.id = :id")

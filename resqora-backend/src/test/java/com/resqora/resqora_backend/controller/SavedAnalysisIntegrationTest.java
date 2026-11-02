@@ -7,6 +7,7 @@ import com.resqora.resqora_backend.repository.ResumeAnalysisRepository;
 import com.resqora.resqora_backend.repository.ResumeRepository;
 import com.resqora.resqora_backend.repository.UserRepository;
 import com.resqora.resqora_backend.service.JwtService;
+import com.resqora.resqora_backend.service.analysis.ResumeAnalyzer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -72,6 +73,26 @@ class SavedAnalysisIntegrationTest {
         assertEquals(first, second);
         assertEquals(rowsAfterFirst, resumeAnalysisRepository.count());
         assertEquals(saved.getId(), resumeAnalysisRepository.findByResumeId(resume.getId()).orElseThrow().getId());
+    }
+
+    // an analysis saved by an older analyzer is recomputed once (same row), on detail and list reads
+    @Test
+    void analysisFromAnOlderAnalyzerIsRecomputed() throws Exception {
+        ResumeAnalysis old = resumeAnalysisRepository.save(new ResumeAnalysis(resume, 1, 1, 1, 0, 0, 0, 0,
+                "[{\"category\":\"Skills\",\"type\":\"WARNING\",\"message\":\"old wording\"}]"));
+
+        mockMvc.perform(get("/api/resumes").header("Authorization", token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.resumes[0].overallScore").value(org.hamcrest.Matchers.not(1)));
+        ResumeAnalysis refreshed = resumeAnalysisRepository.findByResumeId(resume.getId()).orElseThrow();
+        assertEquals(old.getId(), refreshed.getId());
+        assertEquals(ResumeAnalyzer.VERSION, refreshed.getAnalyzerVersion());
+        assertFalse(refreshed.getFindingsJson().contains("old wording"));
+
+        mockMvc.perform(get("/api/resumes/" + resume.getId() + "/analysis").header("Authorization", token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.findings[0].fix").exists())
+                .andExpect(jsonPath("$.findings[0].section").exists());
     }
 
     @Test

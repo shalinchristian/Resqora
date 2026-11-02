@@ -45,6 +45,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/verify-email",
                                 "/api/auth/resend-code", "/api/auth/forgot-password", "/api/auth/reset-password")
                         .permitAll()
+                        // health check is public so the frontend and an uptime pinger can wake the server
+                        .requestMatchers(HttpMethod.GET, "/api/health").permitAll()
                         // Swagger UI and the OpenAPI JSON are public so the docs page can load
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**")
                         .permitAll()

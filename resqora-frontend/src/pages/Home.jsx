@@ -15,7 +15,8 @@ const FAQ = [
   ['Which files work?', 'PDF and Word (DOCX) files up to 2 MB. Scanned PDFs do not work, because there is no text in them to read.'],
   ['Does AI decide my score?', 'No. The score comes from fixed rules, so the same resume always gets the same score. The AI only writes the summary and answers your questions.'],
   ['How many resumes can I keep?', 'Up to 5. Delete one to upload another.'],
-  ['Who can see my resume?', 'Only you. Other accounts cannot open it. To write the summary and answer chat questions, the resume text is sent to Google\'s Gemini.'],
+  ['Who can see my resume?', 'Only you. Other accounts cannot open it. To write the summary and answer chat questions, the resume text is sent to an AI service (Google\'s Gemini or Groq). You can turn AI off on your dashboard, and then nothing is sent.'],
+  ['Do you use cookies?', 'Only Google Analytics cookies, to count visits. Your resume content is never sent to it.'],
 ]
 
 function Heading({ kicker, title }) {
@@ -78,7 +79,7 @@ export default function Home() {
           <div className="bg-surface border border-line rounded-xl p-5"><h3 className="font-medium">Chat</h3><p className="mt-1.5 text-sm text-muted">Ask for interview questions, a rewrite of a weak line, or whether to apply for a job you paste in.</p></div>
           <div className="bg-surface border border-line rounded-xl p-5"><h3 className="font-medium">Preview</h3><p className="mt-1.5 text-sm text-muted">See your original file next to its score while you read the notes.</p></div>
         </div>
-        <p className="mt-4 text-sm text-muted">You get 10 AI messages a day. The score itself never uses AI.</p>
+        <p className="mt-4 text-sm text-muted">You get 20 AI chats a day. The score itself never uses AI.</p>
       </section>
 
       <section className="mt-20 sm:mt-28 grid lg:grid-cols-[1fr_1.4fr] gap-8 lg:gap-14">
@@ -87,7 +88,7 @@ export default function Home() {
           <li>Your file is stored so you can preview it. Only your account can open it.</li>
           <li>The AI summary is saved with your resume so it loads instantly next time.</li>
           <li>Deleting a resume removes the file, its score and its summary. Deleting your account removes everything.</li>
-          <li>For the summary and chat, your resume text and any job description you paste are sent to Google's Gemini. The score is worked out on our server and isn't sent anywhere.</li>
+          <li>For the summary and chat, your resume text and any job description you paste are sent to an AI service (Google's Gemini or Groq). Turn AI off on your dashboard and nothing is sent. The score is worked out on our server and isn't sent anywhere.</li>
         </ul>
       </section>
 

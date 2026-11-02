@@ -1,5 +1,5 @@
-// where the backend lives. Empty in development (Vite forwards /api to :8080);
-// set VITE_API_URL to the backend's address, like https://resqora-api.koyeb.app, when building for hosting
+// backend url. empty in dev because vite proxies /api to :8080
+// when hosting, set VITE_API_URL to the backend url (like https://your-backend.onrender.com)
 const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '').replace(/\/api$/, '')
 
 const TOKEN_KEY = 'resqora_token'
@@ -12,7 +12,7 @@ export class ApiError extends Error {
   constructor(status, message, data = null) {
     super(message)
     this.status = status
-    this.code = data?.error || data?.code || null
+    this.code = data?.code || data?.error || null
   }
 }
 
@@ -55,6 +55,7 @@ export const api = {
   resetPassword: (email, code, newPassword) => request('/api/auth/reset-password', { method: 'POST', body: { email, code, newPassword } }),
   me: () => request('/api/auth/me'),
   updateMe: (name) => request('/api/auth/me', { method: 'PATCH', body: { name } }),
+  setAiEnabled: (aiEnabled) => request('/api/auth/me', { method: 'PATCH', body: { aiEnabled } }),
   changePassword: (currentPassword, newPassword) => request('/api/auth/password', { method: 'PUT', body: { currentPassword, newPassword } }),
   deleteAccount: (password) => request('/api/auth/me', { method: 'DELETE', body: { password } }),
 
@@ -71,6 +72,8 @@ export const api = {
   analysis: (id) => request(`/api/resumes/${id}/analysis`),
   match: (id, jobDescription) => request(`/api/resumes/${id}/match`, { method: 'POST', body: { jobDescription } }),
   summary: (id) => request(`/api/resumes/${id}/summary`),
+  // ask about all of the user's resumes
+  dashboardChat: (message, history) => request('/api/chat', { method: 'POST', body: { message, history } }),
   chat: (id, message, history, jobDescription) =>
     request(`/api/resumes/${id}/chat`, { method: 'POST', body: { message, history, jobDescription } }),
   // original file comes back as raw bytes, not json, so this skips request()

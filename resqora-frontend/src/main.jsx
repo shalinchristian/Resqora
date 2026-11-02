@@ -8,6 +8,9 @@ import '@fontsource/ibm-plex-serif/400.css'
 import '@fontsource/ibm-plex-serif/500.css'
 import '@fontsource/ibm-plex-serif/400-italic.css'
 import './index.css'
+import { wakeServer } from './wake.js'
+
+wakeServer()
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
