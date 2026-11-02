@@ -4,11 +4,9 @@ import { api } from '../api.js'
 import { useAuth } from '../auth.jsx'
 import { Button, Input, ErrorBox } from '../components/ui.jsx'
 import AuthShell from '../components/AuthShell.jsx'
-import { useServerAwake } from '../wake.js'
 
 export default function Register() {
   const { login } = useAuth()
-  const awake = useServerAwake()
   const navigate = useNavigate()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -56,8 +54,8 @@ export default function Register() {
           {mismatch && <span className="block mt-1 text-xs text-bad">Passwords do not match</span>}
         </div>
         <ErrorBox message={error} />
-        <Button type="submit" disabled={busy} variant="accent" className="w-full h-10">{busy ? (awake ? 'Creating...' : 'Waking up the server...') : 'Create account'}</Button>
-        {busy && !awake && <p className="text-xs text-muted text-center">The server was asleep. It can take a minute or two to start, so hang tight.</p>}
+        <Button type="submit" disabled={busy} variant="accent" className="w-full h-10">{busy ? 'Creating...' : 'Create account'}</Button>
+        <p className="text-xs text-muted text-center">Waking the server up might take a few seconds. Please wait.</p>
       </form>
     </AuthShell>
   )

@@ -64,16 +64,16 @@ class AiAppCapIntegrationTest {
 
         // other users use up the rest of today's app-wide budget
         var startOfToday = LocalDate.now(ZoneId.systemDefault()).atStartOfDay(ZoneId.systemDefault()).toInstant();
-        long usedByEveryone = usageRepository.countByCreatedAtGreaterThanEqual(startOfToday);
+        long usedByEveryone = usageRepository.countByProviderAndCreatedAtGreaterThanEqual(AiUsage.Provider.GEMINI, startOfToday);
         User others = userRepository.save(new User("cap-others-" + UUID.randomUUID() + "@example.com", "hash"));
         List<AiUsage> rows = new ArrayList<>();
         for (long i = usedByEveryone; i < CAP; i++) {
-            rows.add(new AiUsage(others));
+            rows.add(new AiUsage(others, AiUsage.Kind.CHAT, AiUsage.Provider.GEMINI));
         }
         usageRepository.saveAll(rows);
         int callsBefore = fakeAi.calls;
 
-        // our user has only used 1 of 10, but the app cap is reached
+        // our user has only used 1 of 20, but the app cap is reached
         ai(resume, token, "{\"message\":\"hi again\"}")
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.status").value(503))
@@ -95,8 +95,8 @@ class AiAppCapIntegrationTest {
         User user = userRepository.save(new User("cap-user-" + UUID.randomUUID() + "@example.com", "hash"));
         Resume resume = resumeRepository.save(new Resume(user, "cv.pdf", "PDF", "Alex\nSKILLS\nJava"));
         List<AiUsage> rows = new ArrayList<>();
-        for (int i = 0; i < 10; i++) {
-            rows.add(new AiUsage(user));
+        for (int i = 0; i < 20; i++) {
+            rows.add(new AiUsage(user, AiUsage.Kind.CHAT, AiUsage.Provider.GEMINI));
         }
         usageRepository.saveAll(rows);
 

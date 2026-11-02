@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api.js'
 import { FEATURES } from '../features.js'
 import Jobs from '../components/Jobs.jsx'
+import ChatPanel from '../components/ChatPanel.jsx'
+import { useAuth } from '../auth.jsx'
 import { Button, ErrorBox, Notice, Toast, toneFor } from '../components/ui.jsx'
 
 const MAX_SIZE = 2 * 1024 * 1024
@@ -88,6 +90,55 @@ function BestScore({ resume }) {
         </div>
       )}
     </Link>
+  )
+}
+
+const DASH_STARTERS = [
+  { text: 'Which of my resumes is strongest, and why?' },
+  { text: 'What skills show up in none of my resumes?' },
+  { text: 'Which resume should I use for a backend role?' },
+]
+
+// AI switch plus today's chat allowance. When AI is off, nothing is sent to an AI service.
+function AiCard({ usage }) {
+  const { user, setUser } = useAuth()
+  const aiOn = user?.aiEnabled !== false
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const toggle = async () => {
+    setSaving(true); setError('')
+    try {
+      const me = await api.setAiEnabled(!aiOn)
+      setUser(me && typeof me === 'object' ? { ...user, ...me, aiEnabled: me.aiEnabled ?? !aiOn } : { ...user, aiEnabled: !aiOn })
+    } catch (e) { setError(e.message) }
+    finally { setSaving(false) }
+  }
+  return (
+    <div className="bg-surface border border-line rounded-xl p-5">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <p className="text-sm font-medium">AI features</p>
+          <p className="text-xs text-muted mt-0.5">{aiOn ? 'Summary and chat are on.' : 'Off. Only our own scoring runs.'}</p>
+        </div>
+        <button type="button" role="switch" aria-checked={aiOn} aria-label="AI features" disabled={saving} onClick={toggle}
+          className={`relative shrink-0 w-10 h-6 rounded-full transition-colors disabled:opacity-50 ${aiOn ? 'bg-accent' : 'bg-sunken border border-line'}`}>
+          <span className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-paper shadow transition-transform ${aiOn ? 'translate-x-4' : ''}`} />
+        </button>
+      </div>
+      {error && <p className="text-xs text-bad mt-2">{error}</p>}
+      {aiOn && usage && (
+        <div className="mt-4 pt-4 border-t border-line">
+          <div className="flex items-baseline justify-between">
+            <p className="text-sm text-muted">AI chats today</p>
+            <p className="text-sm tabular-nums"><span className="font-semibold">{usage.remainingToday}</span> <span className="text-muted">of {usage.limit} left</span></p>
+          </div>
+          <div className="h-1.5 bg-sunken rounded-full mt-3 overflow-hidden">
+            <div className="h-full bg-faint rounded-full" style={{ width: `${Math.max(0, Math.min(1, usage.remainingToday / usage.limit)) * 100}%` }} />
+          </div>
+        </div>
+      )}
+      {!aiOn && <p className="text-xs text-muted mt-3 pt-3 border-t border-line">Your resume text is never sent to an AI service while this is off.</p>}
+    </div>
   )
 }
 
@@ -195,23 +246,15 @@ export default function Dashboard() {
               ))}
             </ul>
             {!full && <p className="text-xs text-muted text-center">{dragging ? 'Drop to upload' : 'or drop a file here'}</p>}
+            {FEATURES.jobs && jobsFor && <Jobs resumeId={jobsFor.id} />}
           </div>
 
-          <aside className="space-y-6 lg:sticky lg:top-20 order-2 lg:col-start-2 lg:row-start-1 lg:row-span-2">
+          <aside className="space-y-6 lg:sticky lg:top-20 order-2 lg:col-start-2 lg:row-start-1">
             {best && <BestScore resume={best} />}
-            {usage && (
-              <div className="bg-surface border border-line rounded-xl p-5">
-                <div className="flex items-baseline justify-between">
-                  <p className="text-sm text-muted">AI requests today</p>
-                  <p className="text-sm tabular-nums"><span className="font-semibold">{usage.remainingToday}</span> <span className="text-muted">of {usage.limit} left</span></p>
-                </div>
-                <div className="h-1.5 bg-sunken rounded-full mt-3 overflow-hidden">
-                  <div className="h-full bg-faint rounded-full" style={{ width: `${(usage.remainingToday / usage.limit) * 100}%` }} />
-                </div>
-              </div>
-            )}
+            <AiCard usage={usage} />
+            <ChatPanel title="Ask about all your resumes" placeholder="Ask about your resumes" starters={DASH_STARTERS}
+              send={api.dashboardChat} onUsage={setUsage} showUsage={false} />
           </aside>
-          <div className="order-3 min-w-0 lg:col-start-1">{FEATURES.jobs && jobsFor && <Jobs resumeId={jobsFor.id} />}</div>
         </div>
       )}
       <Toast>{toast}</Toast>

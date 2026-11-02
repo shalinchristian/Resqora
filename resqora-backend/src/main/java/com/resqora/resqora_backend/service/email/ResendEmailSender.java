@@ -39,7 +39,7 @@ public class ResendEmailSender implements EmailSender {
     }
 
     @Override
-    public void send(String to, String subject, String text) {
+    public void send(String to, String subject, String text, String html) {
         if (apiKey == null || apiKey.isBlank()) {
             // local development only: never turn this on in production, the email contains the code
             if (logEmails) {
@@ -53,7 +53,8 @@ public class ResendEmailSender implements EmailSender {
                 .uri("/emails")
                 .header("Authorization", "Bearer " + apiKey)
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(Map.of("from", from, "to", List.of(to), "subject", subject, "text", text))
+                // both versions: HTML for normal mail apps, text for text-only clients (and better spam scores)
+                .body(Map.of("from", from, "to", List.of(to), "subject", subject, "text", text, "html", html))
                 .retrieve()
                 .toBodilessEntity();
     }

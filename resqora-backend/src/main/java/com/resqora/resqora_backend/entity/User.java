@@ -28,6 +28,10 @@ public class User {
     @Column(name = "email_verified", nullable = false)
     private boolean emailVerified;
 
+    // AI privacy setting: false = never send this user's data to an AI provider (V10, default true)
+    @Column(name = "ai_enabled", nullable = false)
+    private boolean aiEnabled = true;
+
     protected User() {
     }
 
@@ -71,5 +75,13 @@ public class User {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public boolean isAiEnabled() {
+        return aiEnabled;
+    }
+
+    public void setAiEnabled(boolean aiEnabled) {
+        this.aiEnabled = aiEnabled;
     }
 }

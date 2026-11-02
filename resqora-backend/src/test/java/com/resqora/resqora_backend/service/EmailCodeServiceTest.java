@@ -45,7 +45,7 @@ class EmailCodeServiceTest {
             String text = inv.getArgument(2);
             lastCode.set(text.replaceAll("(?s).*?(\\d{6}).*", "$1"));
             return null;
-        }).when(emailSender).send(eq(email), anyString(), anyString());
+        }).when(emailSender).send(eq(email), anyString(), anyString(), anyString());
         return userRepository.saveAndFlush(new User(email, "x", "T"));
     }
 
@@ -84,7 +84,7 @@ class EmailCodeServiceTest {
     @Test
     void failedEmailDoesNotBreakSignUpFlow() {
         User user = userRepository.saveAndFlush(new User("down@example.com", "x", "T"));
-        doThrow(new RuntimeException("Resend down")).when(emailSender).send(anyString(), anyString(), anyString());
+        doThrow(new RuntimeException("Resend down")).when(emailSender).send(anyString(), anyString(), anyString(), anyString());
         assertDoesNotThrow(() -> service.issue(user, Purpose.VERIFY_EMAIL));
     }
 }

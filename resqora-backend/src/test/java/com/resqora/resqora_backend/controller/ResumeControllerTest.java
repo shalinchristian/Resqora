@@ -3,7 +3,6 @@ package com.resqora.resqora_backend.controller;
 import com.resqora.resqora_backend.exception.GlobalExceptionHandler;
 import com.resqora.resqora_backend.entity.Resume;
 import com.resqora.resqora_backend.entity.User;
-import com.resqora.resqora_backend.model.resume.ParsedResume;
 import com.resqora.resqora_backend.repository.ResumeAnalysisRepository;
 import com.resqora.resqora_backend.repository.ResumeRepository;
 import com.resqora.resqora_backend.repository.UserRepository;
@@ -30,7 +29,6 @@ import java.io.ByteArrayOutputStream;
 import java.util.List;
 
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.any;
 

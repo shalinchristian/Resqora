@@ -165,7 +165,7 @@ class ResumeServiceTest {
         when(resume.getUser()).thenReturn(user);
         when(user.getId()).thenReturn(7L);
         when(analysisRepository.findByResumeId(9L)).thenReturn(Optional.of(new com.resqora.resqora_backend.entity.ResumeAnalysis(
-                resume, 70, 20, 15, 10, 15, 10,
+                resume, ResumeAnalyzer.VERSION, 70, 20, 15, 10, 15, 10,
                 "[{\"category\":\"SKILLS\",\"type\":\"STRENGTH\",\"message\":\"Good skills\"}]")));
 
         ResumeService resumeService = new ResumeService(

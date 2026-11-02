@@ -92,9 +92,13 @@ class Slice16IntegrationTest {
     }
 
     private void fillUsage(int rows) {
+        fillUsage(rows, AiUsage.Kind.CHAT);
+    }
+
+    private void fillUsage(int rows, AiUsage.Kind kind) {
         List<AiUsage> usage = new ArrayList<>();
         for (int i = 0; i < rows; i++) {
-            usage.add(new AiUsage(user));
+            usage.add(new AiUsage(user, kind, AiUsage.Provider.GEMINI));
         }
         usageRepository.saveAll(usage);
     }
@@ -110,8 +114,14 @@ class Slice16IntegrationTest {
     }
 
     @Test
-    void newSummaryAtUserLimitIs429ButSavedSummaryStillWorks() throws Exception {
-        fillUsage(10);
+    void newSummaryIsNotBlockedByTheChatLimit() throws Exception {
+        fillUsage(20);
+        summary().andExpect(status().isOk()).andExpect(jsonPath("$.cached").value(false));
+    }
+
+    @Test
+    void newSummaryAtSummarySafetyLimitIs429ButSavedSummaryStillWorks() throws Exception {
+        fillUsage(10, AiUsage.Kind.SUMMARY);
         int before = fakeAi.calls;
         summary().andExpect(status().isTooManyRequests())
                 .andExpect(header().exists("Retry-After"))
@@ -140,7 +150,7 @@ class Slice16IntegrationTest {
 
     @Test
     void concurrentChatsNeverGoPastTheDailyLimit() throws Exception {
-        fillUsage(7); // 3 calls left
+        fillUsage(17); // 3 calls left
         fakeAi.delayMs = 300; // slow AI: every request is in flight at the same time
         ExecutorService pool = Executors.newFixedThreadPool(8);
         try {
@@ -154,7 +164,7 @@ class Slice16IntegrationTest {
             }
             assertEquals(3, statuses.stream().filter(s -> s == 200).count(), statuses.toString());
             assertEquals(5, statuses.stream().filter(s -> s == 429).count(), statuses.toString());
-            assertEquals(10, usedToday());
+            assertEquals(20, usedToday());
         } finally {
             pool.shutdownNow();
         }
@@ -187,7 +197,7 @@ class Slice16IntegrationTest {
 
     @Test
     void retryAfterIsSecondsUntilNextIstMidnight() throws Exception {
-        fillUsage(10);
+        fillUsage(20);
         String retry = chat("{\"message\":\"hi\"}").andExpect(status().isTooManyRequests())
                 .andReturn().getResponse().getHeader("Retry-After");
         java.time.ZoneId ist = java.time.ZoneId.of("Asia/Kolkata");

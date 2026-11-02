@@ -136,8 +136,9 @@ class AiIntegrationTest {
         assertEquals(1, fakeAi.calls);
         assertEquals("Strong Java backend skills. Add measurable results to projects.",
                 resumeRepository.findById(resume.getId()).orElseThrow().getAiSummary());
+        // a summary is not a chat message: the user still has all 20 chat messages
         mockMvc.perform(get("/api/ai/usage").header("Authorization", token))
-                .andExpect(jsonPath("$.remainingToday").value(9));
+                .andExpect(jsonPath("$.remainingToday").value(20));
         assertTrue(fakeAi.lastPrompt.contains("<<<RESUME"));
     }
 
@@ -170,8 +171,9 @@ class AiIntegrationTest {
         String body = "{\"message\":\"How do I improve my projects section?\"}";
         chat(token, body).andExpect(status().isOk())
                 .andExpect(jsonPath("$.reply").value("Add numbers to your projects."))
-                .andExpect(jsonPath("$.remainingToday").value(9));
-        chat(token, body).andExpect(status().isOk()).andExpect(jsonPath("$.remainingToday").value(8));
+                .andExpect(jsonPath("$.remainingToday").value(19))
+                .andExpect(jsonPath("$.limit").value(20));
+        chat(token, body).andExpect(status().isOk()).andExpect(jsonPath("$.remainingToday").value(18));
         assertEquals(2, fakeAi.calls);
     }
 
@@ -222,16 +224,16 @@ class AiIntegrationTest {
     }
 
     @Test
-    void eleventhChatMessageReturns429() throws Exception {
-        for (int i = 1; i <= 10; i++) {
+    void twentyFirstChatMessageReturns429() throws Exception {
+        for (int i = 1; i <= 20; i++) {
             chat(token, "{\"message\":\"q" + i + "\"}").andExpect(status().isOk())
-                    .andExpect(jsonPath("$.remainingToday").value(10 - i));
+                    .andExpect(jsonPath("$.remainingToday").value(20 - i));
         }
-        chat(token, "{\"message\":\"q11\"}").andExpect(status().isTooManyRequests())
+        chat(token, "{\"message\":\"q21\"}").andExpect(status().isTooManyRequests())
                 .andExpect(jsonPath("$.message").value("Daily AI limit reached"))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
                         .exists("Retry-After"));
-        assertEquals(10, fakeAi.calls);
+        assertEquals(20, fakeAi.calls);
     }
 
     @Test
@@ -244,7 +246,7 @@ class AiIntegrationTest {
         fakeAi.fail = true;
         chat(token, "{\"message\":\"hi\"}").andExpect(status().isServiceUnavailable());
         fakeAi.fail = false;
-        chat(token, "{\"message\":\"hi\"}").andExpect(status().isOk()).andExpect(jsonPath("$.remainingToday").value(9));
+        chat(token, "{\"message\":\"hi\"}").andExpect(status().isOk()).andExpect(jsonPath("$.remainingToday").value(19));
     }
 
     @Test

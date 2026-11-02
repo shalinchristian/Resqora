@@ -168,21 +168,54 @@ public class ResumeService {
         Long userId = (Long) authentication.getPrincipal();
         List<Resume> ownResumes = resumeRepository.findByUserIdOrderByCreatedAtDescIdDesc(userId);
         // saved scores for all listed resumes in a single query; null = not analysed yet
-        Map<Long, ResumeAnalysis> analyses = ownResumes.isEmpty() ? Map.of()
-                : resumeAnalysisRepository.findByResumeIdIn(ownResumes.stream().map(Resume::getId).toList())
-                        .stream()
-                        .collect(Collectors.toMap(a -> a.getResume().getId(), a -> a));
+        Map<Long, ResumeAnalysis> analyses = savedAnalyses(ownResumes);
         List<ResumeSummary> resumes = ownResumes.stream()
-                .map(resume -> new ResumeSummary(
-                        resume.getId(),
-                        resume.getOriginalFileName(),
-                        resume.getDocumentType(),
-                        resume.getCreatedAt(),
-                        analyses.containsKey(resume.getId()) ? analyses.get(resume.getId()).getOverallScore() : null,
-                        analyses.containsKey(resume.getId()) ? topFinding(analyses.get(resume.getId())) : null,
-                        resume.hasFile()))
+                .map(resume -> {
+                    ResumeAnalysis saved = analyses.get(resume.getId());
+                    // made by an older analyzer version: recompute now so the list shows the current score
+                    if (saved != null && saved.getAnalyzerVersion() < ResumeAnalyzer.VERSION) {
+                        saved = refreshOrKeep(resume, saved);
+                    }
+                    return new ResumeSummary(
+                            resume.getId(),
+                            resume.getOriginalFileName(),
+                            resume.getDocumentType(),
+                            resume.getCreatedAt(),
+                            saved == null ? null : saved.getOverallScore(),
+                            saved == null ? null : topFinding(saved),
+                            resume.hasFile());
+                })
                 .toList();
         return new ResumeListResponse(resumes.size(), MAX_RESUMES_PER_USER, resumes);
+    }
+
+    private Map<Long, ResumeAnalysis> savedAnalyses(List<Resume> resumes) {
+        return resumes.isEmpty() ? Map.of()
+                : resumeAnalysisRepository.findByResumeIdIn(resumes.stream().map(Resume::getId).toList())
+                        .stream()
+                        .collect(Collectors.toMap(a -> a.getResume().getId(), a -> a));
+    }
+
+    // a failed re-analysis must not break the list: keep showing the older saved result
+    private ResumeAnalysis refreshOrKeep(Resume resume, ResumeAnalysis saved) {
+        try {
+            analyzeAndSave(resume);
+            return resumeAnalysisRepository.findByResumeId(resume.getId()).orElse(saved);
+        } catch (RuntimeException exception) {
+            log.warn("Re-analysis failed for resume {}: {}", resume.getId(), exception.toString());
+            return saved;
+        }
+    }
+
+    // Dashboard chat: the user's own resumes (newest first), each with its parse and current analysis
+    public List<OwnedResume> ownResumesWithAnalysis(Long userId) {
+        return resumeRepository.findByUserIdOrderByCreatedAtDescIdDesc(userId).stream()
+                .map(resume -> new OwnedResume(resume, resumeParser.parse(resume.getExtractedText()),
+                        analyzeIfMissing(resume)))
+                .toList();
+    }
+
+    public record OwnedResume(Resume resume, ParsedResume parsed, AnalysisResult analysis) {
     }
 
     public void deleteResume(Long resumeId, Authentication authentication) {
@@ -202,9 +235,11 @@ public class ResumeService {
         return analyzeIfMissing(resume);
     }
 
-    // Shared by upload and GET /analysis: return the saved result, or compute and save it once
+    // Shared by upload and GET /analysis: return the saved result, or compute and save it once.
+    // A result saved by an older analyzer version is recomputed (rules changed, so its findings are stale).
     private AnalysisResult analyzeIfMissing(Resume resume) {
         return resumeAnalysisRepository.findByResumeId(resume.getId())
+                .filter(saved -> saved.getAnalyzerVersion() >= ResumeAnalyzer.VERSION)
                 .map(this::toAnalysisResult)
                 .orElseGet(() -> analyzeAndSave(resume));
     }
@@ -212,15 +247,18 @@ public class ResumeService {
     private AnalysisResult analyzeAndSave(Resume resume) {
         ParsedResume parsedResume = resumeParser.parse(resume.getExtractedText());
         AnalysisResult result = resumeAnalyzer.analyze(parsedResume, resume.getExtractedText());
-        resumeAnalysisRepository.save(new ResumeAnalysis(
-                resume,
-                result.overallScore(),
-                result.completenessScore(),
-                result.skillsScore(),
-                result.projectsScore(),
-                result.experienceScore(),
-                result.educationScore(),
-                JSON.writeValueAsString(result.findings())));
+        String findingsJson = JSON.writeValueAsString(result.findings());
+        ResumeAnalysis saved = resumeAnalysisRepository.findByResumeId(resume.getId()).orElse(null);
+        if (saved == null) {
+            saved = new ResumeAnalysis(resume, ResumeAnalyzer.VERSION, result.overallScore(),
+                    result.completenessScore(), result.skillsScore(), result.projectsScore(),
+                    result.experienceScore(), result.educationScore(), findingsJson);
+        } else {
+            saved.update(ResumeAnalyzer.VERSION, result.overallScore(), result.completenessScore(),
+                    result.skillsScore(), result.projectsScore(), result.experienceScore(),
+                    result.educationScore(), findingsJson);
+        }
+        resumeAnalysisRepository.save(saved);
         return result;
     }
 

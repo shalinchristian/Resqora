@@ -49,6 +49,10 @@ public class ResumeAnalysis {
     @Column(name = "findings_json", nullable = false, columnDefinition = "TEXT")
     private String findingsJson;
 
+    // analyzer version that produced this row; older rows are recomputed when read (V10)
+    @Column(name = "analyzer_version", nullable = false)
+    private int analyzerVersion;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -56,9 +60,17 @@ public class ResumeAnalysis {
     protected ResumeAnalysis() {
     }
 
-    public ResumeAnalysis(Resume resume, int overallScore, int completenessScore, int skillsScore,
-            int projectsScore, int experienceScore, int educationScore, String findingsJson) {
+    public ResumeAnalysis(Resume resume, int analyzerVersion, int overallScore, int completenessScore,
+            int skillsScore, int projectsScore, int experienceScore, int educationScore, String findingsJson) {
         this.resume = resume;
+        update(analyzerVersion, overallScore, completenessScore, skillsScore, projectsScore, experienceScore,
+                educationScore, findingsJson);
+    }
+
+    // replaces a stale result in place (same row, so the one-analysis-per-resume rule still holds)
+    public void update(int analyzerVersion, int overallScore, int completenessScore, int skillsScore,
+            int projectsScore, int experienceScore, int educationScore, String findingsJson) {
+        this.analyzerVersion = analyzerVersion;
         this.overallScore = overallScore;
         this.completenessScore = completenessScore;
         this.skillsScore = skillsScore;
@@ -77,5 +89,6 @@ public class ResumeAnalysis {
     public int getExperienceScore() { return experienceScore; }
     public int getEducationScore() { return educationScore; }
     public String getFindingsJson() { return findingsJson; }
+    public int getAnalyzerVersion() { return analyzerVersion; }
     public Instant getCreatedAt() { return createdAt; }
 }

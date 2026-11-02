@@ -5,6 +5,7 @@ import com.resqora.resqora_backend.entity.EmailCode.Purpose;
 import com.resqora.resqora_backend.entity.User;
 import com.resqora.resqora_backend.exception.InvalidCodeException;
 import com.resqora.resqora_backend.repository.EmailCodeRepository;
+import com.resqora.resqora_backend.service.email.CodeEmailTemplate;
 import com.resqora.resqora_backend.service.email.EmailSender;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,6 +29,7 @@ public class EmailCodeService {
     private final EmailCodeRepository repository;
     private final PasswordEncoder passwordEncoder;
     private final EmailSender emailSender;
+    private final CodeEmailTemplate template;
     private final Duration validFor;
     private final Duration resendCooldown;
     private final SecureRandom random = new SecureRandom();
@@ -37,11 +39,13 @@ public class EmailCodeService {
             EmailCodeRepository repository,
             PasswordEncoder passwordEncoder,
             EmailSender emailSender,
+            CodeEmailTemplate template,
             @Value("${resqora.email.code-valid-minutes:10}") long validMinutes,
             @Value("${resqora.email.resend-cooldown-seconds:60}") long cooldownSeconds) {
         this.repository = repository;
         this.passwordEncoder = passwordEncoder;
         this.emailSender = emailSender;
+        this.template = template;
         this.validFor = Duration.ofMinutes(validMinutes);
         this.resendCooldown = Duration.ofSeconds(cooldownSeconds);
     }
@@ -67,7 +71,8 @@ public class EmailCodeService {
         String code = String.format("%06d", random.nextInt(1_000_000));
         repository.saveAndFlush(new EmailCode(user.getId(), purpose, passwordEncoder.encode(code), now, now.plus(validFor)));
         try {
-            emailSender.send(user.getEmail(), subject(purpose), body(purpose, code));
+            CodeEmailTemplate.CodeEmail email = template.render(purpose, code, user.getName());
+            emailSender.send(user.getEmail(), email.subject(), email.text(), email.html());
         } catch (RuntimeException exception) {
             // the code is saved, so the user can press "resend" once email works again
             log.error("Could not send {} email to user {}: {}", purpose, user.getId(), exception.getMessage());
@@ -98,16 +103,5 @@ public class EmailCodeService {
 
     public void discard(Long userId, Purpose purpose) {
         repository.deleteByUserIdAndPurpose(userId, purpose);
-    }
-
-    private String subject(Purpose purpose) {
-        return purpose == Purpose.VERIFY_EMAIL ? "Your Resqora verification code" : "Your Resqora password reset code";
-    }
-
-    private String body(Purpose purpose, String code) {
-        String action = purpose == Purpose.VERIFY_EMAIL ? "verify your email" : "reset your password";
-        return "Your code to " + action + " is: " + code + "\n\n"
-                + "It expires in " + validFor.toMinutes() + " minutes. "
-                + "If you didn't ask for this, you can ignore this email.\n\n- Resqora";
     }
 }

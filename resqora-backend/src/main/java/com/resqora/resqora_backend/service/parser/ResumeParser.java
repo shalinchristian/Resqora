@@ -4,6 +4,7 @@ import com.resqora.resqora_backend.model.resume.EducationEntry;
 import com.resqora.resqora_backend.model.resume.ExperienceEntry;
 import com.resqora.resqora_backend.model.resume.ParsedResume;
 import com.resqora.resqora_backend.model.resume.ProjectEntry;
+import com.resqora.resqora_backend.service.extraction.ResumeTextNormalizer;
 import com.resqora.resqora_backend.service.skills.SkillDictionary;
 import org.springframework.stereotype.Service;
 
@@ -14,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -58,6 +60,9 @@ public class ResumeParser {
         if (extractedText == null || extractedText.isBlank()) {
             return emptyResume();
         }
+        // Same clean-up as at upload; it changes nothing on already-clean text, and it also fixes
+        // resumes whose text was saved before the normaliser existed.
+        extractedText = ResumeTextNormalizer.normalize(extractedText);
 
         List<String> lines = extractedText.lines()
                 .map(String::trim)
@@ -349,6 +354,65 @@ public class ResumeParser {
         return true;
     }
 
+    // "<words> University|Institute|College|School|Academy [of X (and|&|for) Y ...]" = the institution's name.
+    private static final Pattern INSTITUTION_NAME = Pattern.compile(
+            "^(.*?\\b(?:University|Institute|College|School|Academy|Polytechnic|Vidyalaya|Vidyapeeth)"
+                    + "(?:\\s+(?:of|and|&|for)\\s+[A-Z][\\w.'-]*(?:\\s+[A-Z][\\w.'-]*)*?)*)(.*)$");
+    // institutes known by an acronym plus a place: "IIT Bombay", "NIT Trichy", "BITS Pilani", then ", City"
+    private static final Pattern ACRONYM_INSTITUTION = Pattern.compile(
+            "^((?:IIT|IIIT|NIT|IIM|IISc|IISER|BITS)\\s+[A-Z][\\w.'-]*)(\\s*,.*)$");
+    // the part after the comma in "City, X" when X is a state or country, i.e. the whole thing is a place
+    private static final Set<String> STATES_AND_COUNTRIES = Set.of(
+            "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Goa", "Gujarat", "Haryana",
+            "Himachal Pradesh", "Jharkhand", "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur",
+            "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu",
+            "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal", "Delhi", "New Delhi",
+            "Ladakh", "Puducherry", "Chandigarh", "India", "USA", "US", "UK", "Canada", "Australia", "Germany",
+            "Singapore", "UAE", "Ireland", "Netherlands", "France", "Japan", "Nepal");
+    // what may follow it as a location: "Changa, Gujarat", ", Ahmedabad", "- Pune, India"
+    private static final Pattern LOCATION_TAIL = Pattern.compile(
+            "^[\\s,–-]*([A-Z][\\w.'-]*(?:\\s+[A-Z][\\w.'-]*)?(?:,\\s*[A-Z][\\w.'-]*(?:\\s+[A-Z][\\w.'-]*)?)?)$");
+
+    /**
+     * Splits "Charotar University of Science and Technology Changa, Gujarat" into name and location.
+     * Rule: the name ends at the institution word (plus an "of/and/for X" tail); what is left becomes the
+     * location only if it looks like one: one or two capitalised words, optionally ", State", and it
+     * must contain a comma or have been separated from the name by one. Otherwise nothing is split,
+     * so "Nirma University Ahmedabad" (no comma) stays as written rather than guessing.
+     * Acronym names ("IIT Bombay, Mumbai") end at the comma. In "Name Word, Place" the Word stays in the
+     * name unless Place is a state or country ("... Technology Bombay, Mumbai" vs "... Changa, Gujarat").
+     */
+    private String[] splitInstitutionLocation(String institution) {
+        Matcher name = INSTITUTION_NAME.matcher(institution);
+        Matcher acronym = ACRONYM_INSTITUTION.matcher(institution);
+        String institutionName;
+        String rest;
+        if (name.matches() && !name.group(2).isBlank()) {
+            institutionName = name.group(1).trim();
+            rest = name.group(2);
+        } else if (acronym.matches()) {
+            // "IIT Bombay, Mumbai": an IIT/NIT/BITS-style name has no "University" word to end at
+            institutionName = acronym.group(1).trim();
+            rest = acronym.group(2);
+        } else {
+            return new String[] {institution, null};
+        }
+        Matcher tail = LOCATION_TAIL.matcher(rest);
+        if (!tail.matches() || !rest.contains(",")) {
+            return new String[] {institution, null};
+        }
+        String location = tail.group(1).trim();
+        // "Indian Institute of Technology Bombay, Mumbai": the word before the comma is part of the name
+        // unless what follows the comma is a state or country ("Changa, Gujarat" stays the location)
+        int comma = location.indexOf(',');
+        boolean gluedToName = Character.isLetter(rest.stripLeading().charAt(0));
+        if (comma > 0 && gluedToName && !STATES_AND_COUNTRIES.contains(location.substring(comma + 1).trim())) {
+            institutionName = institutionName + " " + location.substring(0, comma).trim();
+            location = location.substring(comma + 1).trim();
+        }
+        return new String[] {institutionName, location};
+    }
+
     private void flushEducation(List<String> block, List<EducationEntry> entries) {
         if (block.isEmpty()) {
             return;
@@ -364,6 +428,17 @@ public class ResumeParser {
         String institution = institutionIndex >= 0 ? block.get(institutionIndex) : null;
         String degree = degreeIndex >= 0 ? block.get(degreeIndex) : null;
         String dates = firstMatch(DATE_PATTERN, String.join(" ", block));
+        // Word puts the location and dates right-aligned with a tab; after extraction they are glued to the
+        // name ("Gujarat University Ahmedabad, Gujarat", "BCA Jul 2022 – Jun 2025"), so split them off.
+        String location = null;
+        if (institution != null) {
+            String[] split = splitInstitutionLocation(institution);
+            institution = split[0];
+            location = split[1];
+        }
+        if (degree != null && !removeTrailingDate(degree).equals(degree)) {
+            degree = removeTrailingDate(degree);
+        }
         List<String> details = new ArrayList<>();
         for (int index = 0; index < block.size(); index++) {
             String line = block.get(index);
@@ -371,7 +446,8 @@ public class ResumeParser {
                 details.add(line);
             }
         }
-        entries.add(new EducationEntry(institution, degree, dates, details.isEmpty() ? null : String.join(" ", details)));
+        entries.add(new EducationEntry(institution, degree, dates,
+                details.isEmpty() ? null : String.join(" ", details), location));
         block.clear();
     }
 
@@ -405,24 +481,28 @@ public class ResumeParser {
                 // a long bullet wrapped onto the next line: same bullet, not a new entry
                 current = current.withDescription(append(current.description(), line));
                 previousText = line;
-            } else if (!bullet && current != null && current.dates() == null && current.description() == null
+            } else if (!bullet && current != null && isDescriptionLine(line)) {
+                // Projects and experience: a bullet whose glyph was lost (pasted text, some PDFs) is still
+                // a description of the entry above, not a new entry.
+                current = current.withDescription(append(current.description(), line));
+                previousText = line;
+            } else if (!bullet && current != null && current.dates() == null
                     && DATE_PATTERN.matcher(line).matches()) {
-                // dates on their own line under the header ("TCS | Java Developer" / "Apr 2021 - Present")
-                current = new HeaderEntry(current.header(), current.title(), line, null);
+                // dates on their own line, under the header ("TCS | Java Developer" / "Apr 2021 - Present")
+                // or after the bullets: they belong to this entry, they are not a new one
+                current = new HeaderEntry(current.header(), current.title(), line, current.description());
             } else if (!bullet) {
                 if (current != null) {
                     entries.add(current);
                 }
                 List<String> fields = pipeFields ? headerFields(line) : splitFields(line);
                 boolean piped = pipeFields && fields.size() > 1;
-                String header = fields.get(0);
-                String title = piped ? fieldOrNull(fields, 1) : null;
-                String dates = piped ? fieldOrNull(fields, 2) : firstMatch(DATE_PATTERN, line);
-                String description = piped ? fieldOrNull(fields, 3) : null;
-                if (!piped) {
-                    header = removeTrailingDate(header);
+                if (piped) {
+                    current = pipedExperienceHeader(fields);
+                } else {
+                    current = new HeaderEntry(removeTrailingDate(fields.get(0)), null,
+                            firstMatch(DATE_PATTERN, line), null);
                 }
-                current = new HeaderEntry(header, title, dates, description);
                 previousText = null;
             } else {
                 current = new HeaderEntry(null, null, null, line);
@@ -433,6 +513,61 @@ public class ResumeParser {
             entries.add(current);
         }
         return entries;
+    }
+
+    /**
+     * "Company | Title | Dates | Description" with two fixes:
+     * - Dates may be in any field, or glued to the end of the last one ("Infolabz IT Services May 2024 –
+     *   Jul 2024") because Word right-aligns them with a tab. A field that is only a date, or a trailing
+     *   date on the last field, becomes the dates; the other fields keep their order.
+     * - Many students write "Title | Company". If the first field has a job-title word (Intern, Developer,
+     *   Engineer, ...) and the second does not, they are swapped. Otherwise the old default
+     *   (company first) is kept, so existing resumes parse exactly as before.
+     */
+    private HeaderEntry pipedExperienceHeader(List<String> fields) {
+        List<String> rest = new ArrayList<>();
+        String dates = null;
+        for (int index = 0; index < fields.size(); index++) {
+            String field = fields.get(index);
+            if (dates == null && !field.isBlank() && DATE_PATTERN.matcher(field).matches()) {
+                dates = field;
+                continue;
+            }
+            if (dates == null && index == fields.size() - 1 && !removeTrailingDate(field).equals(field)) {
+                dates = firstMatch(Pattern.compile("(?:" + DATE_PATTERN.pattern() + ")\\s*\\)?$"), field)
+                        .replaceFirst("\\)$", "").trim();
+                field = removeTrailingDate(field);
+            }
+            rest.add(field);
+        }
+        String company = fieldOrNull(rest, 0);
+        String title = fieldOrNull(rest, 1);
+        if (company != null && title != null && JOB_TITLE_WORD.matcher(company).find()
+                && !JOB_TITLE_WORD.matcher(title).find()) {
+            String swap = company;
+            company = title;
+            title = swap;
+        }
+        return new HeaderEntry(company, title, dates, fieldOrNull(rest, 2));
+    }
+
+    // Common job-title words. Only used to tell "Title | Company" from "Company | Title".
+    private static final Pattern JOB_TITLE_WORD = Pattern.compile(
+            "(?i)\\b(?:intern|internship|developer|engineer|analyst|manager|trainee|associate|consultant|lead"
+                    + "|designer|programmer|architect|scientist|tester|administrator|specialist|executive"
+                    + "|assistant|officer|coordinator|director|freelancer)s?\\b");
+
+    /**
+     * An entry title is short: it has "|" fields (name | tech stack), ends with a date, or is at most
+     * 6 words with no full stop ("Nestify", "Chat App", "Infosys Limited"). Anything else, a sentence such as
+     * "Built a full-stack AI resume analyzer ... engine.", is a description line of the current entry.
+     * Same rule for projects and experience, so a bullet without its glyph never becomes a new entry.
+     */
+    private boolean isDescriptionLine(String line) {
+        if (line.contains("|") || !removeTrailingDate(line).equals(line) || DATE_PATTERN.matcher(line).matches()) {
+            return false;
+        }
+        return line.split("\\s+").length > 6 || line.endsWith(".");
     }
 
     // A wrapped line starts lower-case, or follows a line that did not end a sentence,

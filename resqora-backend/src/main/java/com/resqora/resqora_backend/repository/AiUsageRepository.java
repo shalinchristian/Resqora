@@ -6,9 +6,11 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.time.Instant;
 
 public interface AiUsageRepository extends JpaRepository<AiUsage, Long> {
-    long countByCreatedAtGreaterThanEqual(Instant since);
+    // app-wide cap of one provider (e.g. all Gemini calls today)
+    long countByProviderAndCreatedAtGreaterThanEqual(AiUsage.Provider provider, Instant since);
 
-    long countByUserIdAndCreatedAtGreaterThanEqual(Long userId, Instant since);
+    // per-user limit of one kind (e.g. this user's chat messages today)
+    long countByUserIdAndKindAndCreatedAtGreaterThanEqual(Long userId, AiUsage.Kind kind, Instant since);
 
     // demo reset: clear the demo user's AI usage so its daily limit starts fresh
     long deleteByUserId(Long userId);
