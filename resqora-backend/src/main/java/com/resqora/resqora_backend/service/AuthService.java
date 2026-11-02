@@ -5,6 +5,7 @@ import com.resqora.resqora_backend.dto.ChangePasswordRequest;
 import com.resqora.resqora_backend.dto.LoginRequest;
 import com.resqora.resqora_backend.dto.LoginResponse;
 import com.resqora.resqora_backend.dto.MeResponse;
+import com.resqora.resqora_backend.dto.UpdateMeRequest;
 import com.resqora.resqora_backend.dto.RegistrationRequest;
 import com.resqora.resqora_backend.dto.ResetPasswordRequest;
 import com.resqora.resqora_backend.dto.VerifyEmailRequest;
@@ -179,11 +180,18 @@ public class AuthService {
         return toMe(findUser(userId));
     }
 
+    // Only the fields that were sent are changed. The shared demo account stays read-only (403),
+    // so one visitor can't switch AI off for everyone else using it.
     @Transactional
-    public MeResponse updateName(Long userId, String name) {
+    public MeResponse updateMe(Long userId, UpdateMeRequest request) {
         User user = findUser(userId);
         demoAccountGuard.rejectIfDemo(user);
-        user.setName(name);
+        if (request.name() != null) {
+            user.setName(request.name());
+        }
+        if (request.aiEnabled() != null) {
+            user.setAiEnabled(request.aiEnabled());
+        }
         return toMe(userRepository.save(user));
     }
 
@@ -230,6 +238,6 @@ public class AuthService {
     }
 
     private static MeResponse toMe(User user) {
-        return new MeResponse(user.getId(), user.getEmail(), user.getName());
+        return new MeResponse(user.getId(), user.getEmail(), user.getName(), user.isAiEnabled());
     }
 }

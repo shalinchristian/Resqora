@@ -82,7 +82,7 @@ Nuxt.js | nuxt
 Redux
 jQuery
 Bootstrap
-Tailwind | tailwindcss | tailwind css
+Tailwind CSS | tailwind | tailwindcss
 Material UI | mui
 Webpack
 Vite

@@ -112,14 +112,14 @@ class Slice14IntegrationTest {
         String token = demoToken();
         User demo = userRepository.findByEmail(DemoDataSeeder.DEMO_EMAIL).orElseThrow();
         upload(token, docx("Extra", "extra@x.com", "SKILLS", "Go"));
-        aiUsageRepository.save(new AiUsage(demo));
+        aiUsageRepository.save(new AiUsage(demo, AiUsage.Kind.CHAT, AiUsage.Provider.GEMINI));
         assertEquals(4, resumeRepository.findByUserIdOrderByCreatedAtDescIdDesc(demo.getId()).size());
 
         seeder.seed();
 
         List<Resume> resumes = resumeRepository.findByUserIdOrderByCreatedAtDescIdDesc(demo.getId());
         assertEquals(3, resumes.size());
-        assertEquals(0, aiUsageRepository.countByUserIdAndCreatedAtGreaterThanEqual(demo.getId(), Instant.EPOCH));
+        assertEquals(0, aiUsageRepository.countByUserIdAndKindAndCreatedAtGreaterThanEqual(demo.getId(), AiUsage.Kind.CHAT, Instant.EPOCH));
         assertEquals(demo.getId(), userRepository.findByEmail(DemoDataSeeder.DEMO_EMAIL).orElseThrow().getId());
     }
 

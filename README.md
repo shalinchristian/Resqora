@@ -11,7 +11,7 @@
 
 <br/>
 
-> **Resqora** is a resume analysis web application built with **Java, Spring Boot, React, and PostgreSQL**. It extracts content from PDF and DOCX resumes, provides rule-based scoring and feedback, matches resumes against job descriptions, suggests remote jobs, and offers optional AI assistance through Google Gemini.
+> **Resqora** is a resume analysis web application built with **Java, Spring Boot, React, and PostgreSQL**. It extracts content from PDF and DOCX resumes, provides rule-based scoring and feedback, matches resumes against job descriptions, suggests remote jobs, and offers optional AI assistance through Google Gemini and Groq.
 
 <details open>
 <summary><b>Table of contents</b></summary>
@@ -36,12 +36,13 @@
 | **Scoring and findings** | Calculates an overall score and section scores, with findings that point to content that may need improvement. |
 | **Job matching** | Compares resume skills with a job description using a local dictionary of approximately 200 skills and aliases. Matching is deterministic and does not use AI. |
 | **Job suggestions** | Retrieves remote roles from [Jobicy](https://jobicy.com/api/v2), ranks them by match score, and links to the original listings. |
-| **AI assistance (optional)** | Generates a saved resume summary and provides a short resume-focused chat through Gemini. |
+| **AI assistance (optional)** | Generates a saved resume summary (Gemini), a chat inside each resume (Gemini), and a dashboard chat about all your resumes (Groq). Each user gets 20 chats a day. |
+| **AI privacy switch** | Users can turn AI off from the dashboard. When it's off, nothing is sent to any AI provider. |
 | **Account management** | JWT authentication, BCrypt password hashing, account settings, and user-specific resume access. |
 | **Document handling** | Uploads, lists, previews, and deletes PDF/DOCX files. Uploads are limited to 2 MB per file and five resumes per user. |
 | **API documentation** | Swagger UI with JWT authorization support. |
 
-> Resume scoring and job matching work **without AI**. A Gemini API key is only needed for AI summaries and chat.
+> Resume scoring and job matching work **without AI**. A Gemini or Groq API key is only needed for AI summaries and chat.
 
 ---
 
@@ -55,7 +56,7 @@
 | **Database and migrations** | PostgreSQL, Hibernate/JPA, Flyway (V1–V8) |
 | **PDF and DOCX parsing** | Apache PDFBox 3.0.5, Apache POI 5.4.1 |
 | **API documentation** | springdoc-openapi 3.1.1, Swagger UI |
-| **AI integration** | Google Gemini REST API via Spring `RestClient` |
+| **AI integration** | Google Gemini and Groq REST APIs via Spring `RestClient` |
 | **Job search** | Jobicy REST API via Spring `RestClient` |
 | **Frontend** | React 19, React Router 7, Vite 6, Tailwind CSS 4, `docx-preview` |
 | **Testing** | JUnit 5, Mockito, Spring MockMvc, H2 |
@@ -83,6 +84,7 @@ flowchart TD
     S --> R[Spring Data JPA repositories]
     R --> DB[(PostgreSQL)]
     S -. optional .-> G[Google Gemini API]
+    S -. optional .-> Q[Groq API]
     S -.-> J[Jobicy API]
     C --> E[Global exception handler]
 ```
@@ -192,8 +194,10 @@ RESQORA_DB_URL=jdbc:postgresql://YOUR_DB_HOST:5432/resqora
 RESQORA_DB_USERNAME=YOUR_DB_USERNAME
 RESQORA_DB_PASSWORD=YOUR_DB_PASSWORD
 RESQORA_JWT_SECRET=REPLACE_WITH_A_SECURE_SECRET_AT_LEAST_32_CHARACTERS_LONG
-# Optional: enables Gemini summary and chat
+# Optional: enables Gemini summary and resume chat
 GEMINI_API_KEY=
+# Optional: enables the dashboard chat (falls back to Gemini without it)
+GROQ_API_KEY=
 ```
 
 > Use a secure JWT secret of at least 32 characters. Never commit `.env`, database credentials, JWT secrets, or API keys. If PostgreSQL runs on your host while the backend runs in Docker Desktop, `host.docker.internal` can be used as the database hostname. Replace it if your deployment uses a different network setup.
@@ -257,7 +261,7 @@ cd resqora-backend
 ./mvnw test
 ```
 
-On Windows, use `.\mvnw.cmd test`. The tests use H2 and test doubles for external services, so they do not require a real Gemini key or Jobicy API call.
+On Windows, use `.\mvnw.cmd test`. The tests use H2 and test doubles for external services, so they do not require a real Gemini or Groq key or Jobicy API call.
 
 ### Configuration
 
@@ -272,10 +276,15 @@ On Windows, use `.\mvnw.cmd test`. The tests use H2 and test doubles for externa
 | `RESQORA_CORS_ORIGINS` | `http://localhost:5173` | Allowed frontend origin(s) |
 | `PORT` | `8080` | HTTP port |
 | `RESQORA_DB_POOL_SIZE` | `3` | Maximum database connection pool size |
-| `GEMINI_API_KEY` | Empty | Enables AI summaries and chat |
+| `GEMINI_API_KEY` | Empty | Enables AI summaries and resume chat |
 | `GEMINI_MODEL` | `gemini-3.5-flash-lite` | Gemini model name |
-| `RESQORA_AI_USER_DAILY_LIMIT` | `10` | AI calls per user per day |
-| `RESQORA_AI_DAILY_CAP` | `50` | AI calls across the app per day |
+| `GROQ_API_KEY` | Empty | Enables the dashboard chat (falls back to Gemini without it) |
+| `GROQ_MODEL` | `openai/gpt-oss-20b` | Groq model name |
+| `RESQORA_GROQ_BASE_URL` | `https://api.groq.com/openai/v1` | Groq API base URL |
+| `RESQORA_AI_USER_DAILY_LIMIT` | `20` | Chat messages per user per day (resume and dashboard chat together) |
+| `RESQORA_AI_SUMMARY_DAILY_LIMIT` | `10` | New AI summaries per user per day |
+| `RESQORA_AI_DAILY_CAP` | `450` | Gemini calls across the app per day |
+| `RESQORA_GROQ_DAILY_CAP` | `900` | Groq calls across the app per day |
 | `RESQORA_TIMEZONE` | `Asia/Kolkata` | Time zone for daily AI limits |
 | `RESQORA_JOBICY_BASE_URL` | `https://jobicy.com/api/v2` | Jobicy API base URL |
 | `RESQORA_SWAGGER_ENABLED` | `true` | Enables/disables Swagger UI and API docs |
@@ -295,7 +304,7 @@ Login throttling and demo-account options are also configurable through environm
 - Job results are cached in memory for 30 minutes and per resume for 12 hours; caches are not shared across backend instances.
 - JWTs expire after one hour by default. Refresh tokens are not implemented.
 - Login throttling is in memory, resets on restart, and is not shared across backend instances.
-- AI features send resume text, and any supplied job description or chat context, to Google Gemini. AI is optional; scoring and job matching do not depend on it.
+- AI features send resume text, and any supplied job description or chat context, to Google Gemini or Groq. Users can turn AI off, and then nothing is sent. AI is optional; scoring and job matching do not depend on it.
 
 ---
 

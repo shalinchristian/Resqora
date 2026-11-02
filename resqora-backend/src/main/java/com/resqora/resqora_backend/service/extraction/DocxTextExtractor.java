@@ -4,9 +4,14 @@ import com.resqora.resqora_backend.exception.DocumentExtractionException;
 import org.apache.poi.xwpf.usermodel.IBodyElement;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.apache.poi.xwpf.usermodel.XWPFStyle;
+import org.apache.poi.xwpf.usermodel.XWPFStyles;
 import org.apache.poi.xwpf.usermodel.XWPFTable;
 import org.apache.poi.xwpf.usermodel.XWPFTableCell;
 import org.apache.poi.xwpf.usermodel.XWPFTableRow;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTNumPr;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTPPr;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTPPrGeneral;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -36,7 +41,13 @@ public class DocxTextExtractor {
     private void appendElements(StringBuilder text, List<IBodyElement> elements) {
         for (IBodyElement element : elements) {
             if (element instanceof XWPFParagraph paragraph) {
-                for (String line : paragraphLines(paragraph)) {
+                List<String> lines = paragraphLines(paragraph);
+                if (isListItem(paragraph) && !lines.get(0).isBlank()) {
+                    // Why: Word keeps a list bullet in numbering.xml, not in the paragraph text, so without this
+                    // the DOCX bullet lines have no glyph while the same resume as PDF shows "•" lines.
+                    lines.set(0, "• " + lines.get(0));
+                }
+                for (String line : lines) {
                     appendLine(text, line);
                 }
             } else if (element instanceof XWPFTable table) {
@@ -108,9 +119,43 @@ public class DocxTextExtractor {
                     }
                 }
                 case "tab" -> own.append(' ');
+                // a manual line break (Shift+Enter) is a new line in the PDF too, not glued words
+                case "br", "cr" -> own.append('\n');
+                // paragraph/run properties hold tab-stop definitions (<w:tab>), not text
+                case "pPr", "rPr" -> { }
                 default -> walk(child, own, boxLines);
             }
         }
+    }
+
+    /**
+     * True when Word shows this paragraph as a bulleted or numbered list item: a numbering id on the
+     * paragraph itself, or on its style ("List Bullet") or a style it is based on. numId 0 means "no list".
+     */
+    static boolean isListItem(XWPFParagraph paragraph) {
+        CTPPr own = paragraph.getCTP().getPPr();
+        if (own != null && own.isSetNumPr()) {
+            return hasNumbering(own.getNumPr());
+        }
+        XWPFStyles styles = paragraph.getDocument() == null ? null : paragraph.getDocument().getStyles();
+        String styleId = paragraph.getStyleID();
+        for (int depth = 0; styles != null && styleId != null && depth < 10; depth++) {
+            XWPFStyle style = styles.getStyle(styleId);
+            if (style == null) {
+                break;
+            }
+            CTPPrGeneral pPr = style.getCTStyle().getPPr();
+            if (pPr != null && pPr.isSetNumPr()) {
+                return hasNumbering(pPr.getNumPr());
+            }
+            styleId = style.getBasisStyleID();
+        }
+        return false;
+    }
+
+    private static boolean hasNumbering(CTNumPr numPr) {
+        return numPr.isSetNumId() && numPr.getNumId().getVal() != null
+                && numPr.getNumId().getVal().signum() != 0;
     }
 
     static String rowText(XWPFTableRow row) {

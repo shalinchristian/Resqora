@@ -3,11 +3,9 @@ import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth.jsx'
 import { Button, Input, ErrorBox, Notice } from '../components/ui.jsx'
 import AuthShell from '../components/AuthShell.jsx'
-import { useServerAwake } from '../wake.js'
 
 export default function Login() {
   const { user, login } = useAuth()
-  const awake = useServerAwake()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -55,8 +53,8 @@ export default function Login() {
           <Link to="/forgot-password" state={{ email: email.trim().toLowerCase() }} className="inline-block mt-1.5 text-xs text-muted hover:text-accent">Forgot password?</Link>
         </div>
         <ErrorBox message={error} />
-        <Button type="submit" disabled={busy} variant="accent" className="w-full h-10">{busy ? (awake ? 'Logging in...' : 'Waking up the server...') : 'Log in'}</Button>
-        {busy && !awake && <p className="text-xs text-muted text-center">The server was asleep. It can take a minute or two to start, so hang tight.</p>}
+        <Button type="submit" disabled={busy} variant="accent" className="w-full h-10">{busy ? 'Logging in...' : 'Log in'}</Button>
+        <p className="text-xs text-muted text-center">Waking the server up might take a few seconds. Please wait.</p>
       </form>
     </AuthShell>
   )

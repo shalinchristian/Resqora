@@ -98,7 +98,7 @@ export default function App() {
       </main>
 
       <footer className="border-t border-line">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5 text-xs text-faint">© 2026 Resqora. This site uses Google Analytics cookies to count visits; your resume content is never sent to it.</div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5 text-xs text-faint">© 2026 Resqora</div>
       </footer>
     </div>
   )

@@ -2,6 +2,8 @@ package com.resqora.resqora_backend.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -15,7 +17,7 @@ import org.hibernate.annotations.OnDeleteAction;
 
 import java.time.Instant;
 
-// One row per real AI call, used for the daily limit. Kept separate from the cache so that
+// One row per real AI call, used for the daily limits. Kept separate from the cache so that
 // deleting a resume does not give the user their AI calls back.
 @Entity
 @Table(name = "ai_usage")
@@ -29,6 +31,14 @@ public class AiUsage {
     @OnDelete(action = OnDeleteAction.CASCADE)
     private User user;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private Kind kind;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private Provider provider;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -36,11 +46,21 @@ public class AiUsage {
     protected AiUsage() {
     }
 
-    public AiUsage(User user) {
+    public AiUsage(User user, Kind kind, Provider provider) {
         this.user = user;
+        this.kind = kind;
+        this.provider = provider;
     }
+
+    // CHAT = a chat message (resume or dashboard), counted in the per-user daily limit.
+    // SUMMARY = a new resume summary, not in that limit but still in the provider's app-wide cap.
+    public enum Kind { CHAT, SUMMARY }
+
+    public enum Provider { GEMINI, GROQ }
 
     public Long getId() { return id; }
     public User getUser() { return user; }
+    public Kind getKind() { return kind; }
+    public Provider getProvider() { return provider; }
     public Instant getCreatedAt() { return createdAt; }
 }

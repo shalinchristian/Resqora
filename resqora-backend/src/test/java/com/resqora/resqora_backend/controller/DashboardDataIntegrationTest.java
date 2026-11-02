@@ -69,27 +69,27 @@ class DashboardDataIntegrationTest {
         mockMvc.perform(get("/api/ai/usage").header("Authorization", token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.usedToday").value(0))
-                .andExpect(jsonPath("$.limit").value(10))
-                .andExpect(jsonPath("$.remainingToday").value(10));
+                .andExpect(jsonPath("$.limit").value(20))
+                .andExpect(jsonPath("$.remainingToday").value(20));
     }
 
     @Test
     void usageCountsOnlyOwnCallsAndNeverGoesNegative() throws Exception {
         User other = userRepository.save(new User("dash-other-" + UUID.randomUUID() + "@example.com", "hash"));
         for (int i = 0; i < 3; i++) {
-            usageRepository.save(new AiUsage(user));
+            usageRepository.save(new AiUsage(user, AiUsage.Kind.CHAT, AiUsage.Provider.GEMINI));
         }
-        usageRepository.save(new AiUsage(other));
+        usageRepository.save(new AiUsage(other, AiUsage.Kind.CHAT, AiUsage.Provider.GEMINI));
 
         mockMvc.perform(get("/api/ai/usage").header("Authorization", token))
                 .andExpect(jsonPath("$.usedToday").value(3))
-                .andExpect(jsonPath("$.remainingToday").value(7));
+                .andExpect(jsonPath("$.remainingToday").value(17));
 
-        for (int i = 0; i < 9; i++) {
-            usageRepository.save(new AiUsage(user));
+        for (int i = 0; i < 19; i++) {
+            usageRepository.save(new AiUsage(user, AiUsage.Kind.CHAT, AiUsage.Provider.GEMINI));
         }
         mockMvc.perform(get("/api/ai/usage").header("Authorization", token))
-                .andExpect(jsonPath("$.usedToday").value(12))
+                .andExpect(jsonPath("$.usedToday").value(22))
                 .andExpect(jsonPath("$.remainingToday").value(0));
     }
 

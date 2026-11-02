@@ -4,15 +4,22 @@ import com.resqora.resqora_backend.dto.ai.AiUsageResponse;
 import com.resqora.resqora_backend.dto.ai.ChatMessage;
 import com.resqora.resqora_backend.dto.ai.ChatRequest;
 import com.resqora.resqora_backend.dto.ai.ChatResponse;
+import com.resqora.resqora_backend.dto.ai.DashboardChatRequest;
 import com.resqora.resqora_backend.dto.ai.SummaryResponse;
 import com.resqora.resqora_backend.entity.AiUsage;
+import com.resqora.resqora_backend.entity.AiUsage.Kind;
+import com.resqora.resqora_backend.entity.AiUsage.Provider;
 import com.resqora.resqora_backend.entity.Resume;
+import com.resqora.resqora_backend.entity.User;
 import com.resqora.resqora_backend.exception.AiDailyLimitExceededException;
+import com.resqora.resqora_backend.exception.AiDisabledException;
 import com.resqora.resqora_backend.exception.AiUnavailableException;
+import com.resqora.resqora_backend.exception.AuthenticatedUserNotFoundException;
 import com.resqora.resqora_backend.repository.AiUsageRepository;
 import com.resqora.resqora_backend.repository.ResumeRepository;
 import com.resqora.resqora_backend.repository.UserRepository;
 import com.resqora.resqora_backend.service.ResumeService;
+import com.resqora.resqora_backend.service.ResumeService.OwnedResume;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -23,11 +30,20 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
 
+/**
+ * All AI features. The order of checks for every request:
+ * 1. privacy: the user turned AI off -> 403 AI_DISABLED, nothing is sent to any AI;
+ * 2. a provider key is configured, else 503;
+ * 3. limits, checked and reserved atomically: chat messages per user per day (resume + dashboard chat
+ *    share one limit), new summaries per user per day (separate safety limit), and an app-wide cap per
+ *    provider that protects the shared free-tier quota (Gemini cap counts summaries AND Gemini chats);
+ * 4. the AI call; if it fails, the reservation is deleted so failed calls are free.
+ */
 @Service
 public class AiService {
     static final int MAX_RESUME_CHARS = 12000;
 
-    // The rules live in Gemini's systemInstruction. Everything the user controls (resume, earlier turns,
+    // The rules live in the system instruction. Everything the user controls (resume, earlier turns,
     // job description, the question) is sent as quoted data between markers.
     static final String CHAT_RULES = """
             You are a careers helper inside a resume app. You help one student with their own resume.
@@ -56,9 +72,12 @@ public class AiService {
     private final ResumeRepository resumeRepository;
     private final UserRepository userRepository;
     private final AiUsageRepository usageRepository;
-    private final AiClient aiClient;
-    private final int dailyLimit;
-    private final int dailyCap;
+    private final AiClient geminiClient;
+    private final GroqClient groqClient;
+    private final int chatDailyLimit;
+    private final int summaryDailyLimit;
+    private final int geminiDailyCap;
+    private final int groqDailyCap;
     private final ZoneId zone;
     private final TransactionTemplate transactionTemplate;
 
@@ -67,58 +86,98 @@ public class AiService {
             ResumeRepository resumeRepository,
             UserRepository userRepository,
             AiUsageRepository usageRepository,
-            AiClient aiClient,
-            @Value("${resqora.ai.daily-limit:10}") int dailyLimit,
-            @Value("${resqora.ai.daily-cap:50}") int dailyCap,
+            AiClient geminiClient,
+            GroqClient groqClient,
+            @Value("${resqora.ai.daily-limit:20}") int chatDailyLimit,
+            @Value("${resqora.ai.summary-daily-limit:10}") int summaryDailyLimit,
+            @Value("${resqora.ai.daily-cap:450}") int geminiDailyCap,
+            @Value("${resqora.ai.groq-daily-cap:900}") int groqDailyCap,
             @Value("${resqora.timezone:Asia/Kolkata}") String timezone,
             TransactionTemplate transactionTemplate) {
-        this.transactionTemplate = transactionTemplate;
         this.resumeService = resumeService;
         this.resumeRepository = resumeRepository;
         this.userRepository = userRepository;
         this.usageRepository = usageRepository;
-        this.aiClient = aiClient;
-        this.dailyLimit = dailyLimit;
-        this.dailyCap = dailyCap;
+        this.geminiClient = geminiClient;
+        this.groqClient = groqClient;
+        this.chatDailyLimit = chatDailyLimit;
+        this.summaryDailyLimit = summaryDailyLimit;
+        this.geminiDailyCap = geminiDailyCap;
+        this.groqDailyCap = groqDailyCap;
         this.zone = ZoneId.of(timezone);
+        this.transactionTemplate = transactionTemplate;
     }
 
-    // Saved summary: free. A NEW summary is a real AI call, so it uses one of the user's daily calls
-    // and counts toward the app-wide cap, like chat.
+    // Saved summary: free. A NEW summary is one Gemini call: it does NOT use the user's chat messages,
+    // but it counts toward the summary safety limit and the app-wide Gemini cap.
     public SummaryResponse summary(Long resumeId, Authentication authentication) {
-        Long userId = (Long) authentication.getPrincipal();
+        Long userId = requireAiEnabled(authentication);
         Resume resume = resumeService.findOwnedResume(resumeId, authentication);
         if (resume.getAiSummary() != null && !resume.getAiSummary().isBlank()) {
             return new SummaryResponse(resume.getAiSummary(), true);
         }
-        String summary = callWithReservation(userId,
-                () -> aiClient.generateText(SUMMARY_RULES, block("RESUME", resumeText(resume)))).text();
+        requireConfigured(geminiClient.isConfigured());
+        Reservation reservation = reserve(userId, Kind.SUMMARY, Provider.GEMINI);
+        String summary = call(reservation,
+                () -> geminiClient.generateText(SUMMARY_RULES, block("RESUME", resumeText(resume))));
         resume.setAiSummary(summary);
         resumeRepository.save(resume);
         return new SummaryResponse(summary, false);
     }
 
-    // Every message is a real AI call (no caching) and counts toward the per-user daily limit.
+    // Chat about one resume (Gemini). Every message is a real AI call and uses one chat message.
     public ChatResponse chat(Long resumeId, ChatRequest request, Authentication authentication) {
-        Long userId = (Long) authentication.getPrincipal();
+        Long userId = requireAiEnabled(authentication);
         Resume resume = resumeService.findOwnedResume(resumeId, authentication);
-        Answer answer = callWithReservation(userId,
-                () -> aiClient.generateText(CHAT_RULES, buildChatPrompt(resume, request)));
-        return new ChatResponse(answer.text(), answer.remainingToday());
+        requireConfigured(geminiClient.isConfigured());
+        Reservation reservation = reserve(userId, Kind.CHAT, Provider.GEMINI);
+        String reply = call(reservation,
+                () -> geminiClient.generateText(CHAT_RULES, buildChatPrompt(resume, request)));
+        return new ChatResponse(reply, reservation.remainingToday(), chatDailyLimit);
     }
 
-    private record Answer(String text, int remainingToday) {
+    // Chat about all of the user's own resumes. Groq when its key is set (keeps Gemini's smaller free
+    // quota for summaries and resume chat), otherwise Gemini. Same per-user chat limit either way.
+    public ChatResponse dashboardChat(DashboardChatRequest request, Authentication authentication) {
+        Long userId = requireAiEnabled(authentication);
+        Provider provider = groqClient.isConfigured() ? Provider.GROQ
+                : geminiClient.isConfigured() ? Provider.GEMINI : null;
+        requireConfigured(provider != null);
+        // only this user's resumes are loaded (by owner id), so another user's data can never be in the prompt
+        List<OwnedResume> resumes = resumeService.ownResumesWithAnalysis(userId);
+        List<ChatMessage> history = request.history() == null ? List.of() : request.history();
+        String prompt = DashboardChatPrompt.build(resumes, request.message(), history);
+        Reservation reservation = reserve(userId, Kind.CHAT, provider);
+        String reply = call(reservation, () -> provider == Provider.GROQ
+                ? groqClient.generateText(DashboardChatPrompt.RULES, prompt)
+                : geminiClient.generateText(DashboardChatPrompt.RULES, prompt));
+        return new ChatResponse(reply, reservation.remainingToday(), chatDailyLimit);
     }
 
-    // 1. reserve one usage row (checks + insert are atomic), 2. call the AI outside any lock,
-    // 3. on failure delete the reservation so failed calls are free.
-    private Answer callWithReservation(Long userId, java.util.function.Supplier<String> call) {
-        if (!aiClient.isConfigured()) {
+    public AiUsageResponse usage(Authentication authentication) {
+        long used = chatsToday((Long) authentication.getPrincipal());
+        return new AiUsageResponse((int) used, chatDailyLimit, (int) Math.max(0, chatDailyLimit - used));
+    }
+
+    // Checked before anything else, so a user with AI off never has data sent (not even a cached summary).
+    private Long requireAiEnabled(Authentication authentication) {
+        Long userId = (Long) authentication.getPrincipal();
+        User user = userRepository.findById(userId).orElseThrow(AuthenticatedUserNotFoundException::new);
+        if (!user.isAiEnabled()) {
+            throw new AiDisabledException();
+        }
+        return userId;
+    }
+
+    private static void requireConfigured(boolean configured) {
+        if (!configured) {
             throw new AiUnavailableException();
         }
-        Reservation reservation = reserve(userId);
+    }
+
+    private String call(Reservation reservation, java.util.function.Supplier<String> aiCall) {
         try {
-            return new Answer(clean(call.get()), reservation.remainingToday());
+            return clean(aiCall.get());
         } catch (RuntimeException exception) {
             usageRepository.deleteById(reservation.usageId());
             throw exception;
@@ -128,24 +187,33 @@ public class AiService {
     private record Reservation(Long usageId, int remainingToday) {
     }
 
-    // The JVM lock makes the per-user limit AND the app-wide cap exact on one server; the user row lock
-    // (SELECT ... FOR UPDATE) keeps the per-user limit exact even if several servers share the database.
+    // The JVM lock makes the limits AND the app-wide caps exact on one server; the user row lock
+    // (SELECT ... FOR UPDATE) keeps the per-user limits exact even if several servers share the database.
     private final Object reserveLock = new Object();
 
-    private Reservation reserve(Long userId) {
+    private Reservation reserve(Long userId, Kind kind, Provider provider) {
         synchronized (reserveLock) {
             return transactionTemplate.execute(status -> {
-                userRepository.findByIdForUpdate(userId);
-                long usedToday = usedToday(userId);
-                if (usedToday >= dailyLimit) {
+                User user = userRepository.findByIdForUpdate(userId)
+                        .orElseThrow(AuthenticatedUserNotFoundException::new);
+                Instant today = startOfToday();
+                long chatsToday = usageRepository.countByUserIdAndKindAndCreatedAtGreaterThanEqual(
+                        userId, Kind.CHAT, today);
+                if (kind == Kind.CHAT && chatsToday >= chatDailyLimit) {
                     throw new AiDailyLimitExceededException(secondsUntilReset());
                 }
-                if (usageRepository.countByCreatedAtGreaterThanEqual(startOfToday()) >= dailyCap) {
-                    // protects the shared Gemini free-tier quota for the whole app
+                if (kind == Kind.SUMMARY && usageRepository.countByUserIdAndKindAndCreatedAtGreaterThanEqual(
+                        userId, Kind.SUMMARY, today) >= summaryDailyLimit) {
+                    throw new AiDailyLimitExceededException(secondsUntilReset());
+                }
+                int cap = provider == Provider.GROQ ? groqDailyCap : geminiDailyCap;
+                if (usageRepository.countByProviderAndCreatedAtGreaterThanEqual(provider, today) >= cap) {
+                    // protects the provider's shared free-tier quota for the whole app
                     throw new AiUnavailableException();
                 }
-                AiUsage saved = usageRepository.saveAndFlush(new AiUsage(userRepository.getReferenceById(userId)));
-                return new Reservation(saved.getId(), (int) Math.max(0, dailyLimit - usedToday - 1));
+                AiUsage saved = usageRepository.saveAndFlush(new AiUsage(user, kind, provider));
+                long chatsAfter = kind == Kind.CHAT ? chatsToday + 1 : chatsToday;
+                return new Reservation(saved.getId(), (int) Math.max(0, chatDailyLimit - chatsAfter));
             });
         }
     }
@@ -159,24 +227,23 @@ public class AiService {
         return Math.max(1, java.time.Duration.between(now, next).toSeconds());
     }
 
-    public AiUsageResponse usage(Authentication authentication) {
-        long used = usedToday((Long) authentication.getPrincipal());
-        return new AiUsageResponse((int) used, dailyLimit, (int) Math.max(0, dailyLimit - used));
-    }
-
     static String buildChatPrompt(Resume resume, ChatRequest request) {
         List<ChatMessage> history = request.history() == null ? List.of() : request.history();
+        String jobDescription = request.jobDescription() == null ? "" : request.jobDescription().trim();
+        return "Answer the QUESTION about the RESUME, following your rules.\n\n"
+                + block("RESUME", resumeText(resume))
+                + block("JOB_DESCRIPTION", jobDescription.isEmpty() ? "(none given)" : jobDescription)
+                + block("EARLIER_TURNS", turns(history))
+                + block("QUESTION", request.message().trim());
+    }
+
+    static String turns(List<ChatMessage> history) {
         StringBuilder turns = new StringBuilder();
         for (ChatMessage turn : history) {
             turns.append("user".equals(turn.role()) ? "Student: " : "Helper: ")
                     .append(turn.text().trim()).append('\n');
         }
-        String jobDescription = request.jobDescription() == null ? "" : request.jobDescription().trim();
-        return "Answer the QUESTION about the RESUME, following your rules.\n\n"
-                + block("RESUME", resumeText(resume))
-                + block("JOB_DESCRIPTION", jobDescription.isEmpty() ? "(none given)" : jobDescription)
-                + block("EARLIER_TURNS", turns.isEmpty() ? "(none)" : turns.toString())
-                + block("QUESTION", request.message().trim());
+        return turns.isEmpty() ? "(none)" : turns.toString();
     }
 
     // Marker text inside user data is neutralised so a block can't be closed early
@@ -206,7 +273,7 @@ public class AiService {
         return LocalDate.ofInstant(now, zone).atStartOfDay(zone).toInstant();
     }
 
-    private long usedToday(Long userId) {
-        return usageRepository.countByUserIdAndCreatedAtGreaterThanEqual(userId, startOfToday());
+    private long chatsToday(Long userId) {
+        return usageRepository.countByUserIdAndKindAndCreatedAtGreaterThanEqual(userId, Kind.CHAT, startOfToday());
     }
 }

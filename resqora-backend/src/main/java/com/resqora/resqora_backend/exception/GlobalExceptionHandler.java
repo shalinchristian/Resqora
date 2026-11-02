@@ -123,15 +123,29 @@ public class GlobalExceptionHandler {
         return errorResponse(HttpStatus.CONFLICT, exception.getMessage());
     }
 
-    // No API key, app-wide daily cap reached, or Gemini failed (quota 429, timeout, 5xx, bad reply)
+    // No API key, app-wide daily cap reached, or the provider failed (quota 429, timeout, 5xx, bad reply)
     @ExceptionHandler(AiUnavailableException.class)
     public ResponseEntity<ErrorResponse> handleAiUnavailable(AiUnavailableException exception) {
-        return errorResponse(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage());
+        HttpStatus status = HttpStatus.SERVICE_UNAVAILABLE;
+        return ResponseEntity.status(status).body(new ErrorResponse(
+                status.value(), status.getReasonPhrase(), exception.getMessage(), AiUnavailableException.CODE));
+    }
+
+    // The user switched AI off: 403 with a code so the frontend can show "turn AI on in settings"
+    @ExceptionHandler(AiDisabledException.class)
+    public ResponseEntity<ErrorResponse> handleAiDisabled(AiDisabledException exception) {
+        HttpStatus status = HttpStatus.FORBIDDEN;
+        return ResponseEntity.status(status).body(new ErrorResponse(
+                status.value(), status.getReasonPhrase(), exception.getMessage(), AiDisabledException.CODE));
     }
 
     @ExceptionHandler(AiDailyLimitExceededException.class)
     public ResponseEntity<ErrorResponse> handleAiDailyLimit(AiDailyLimitExceededException exception) {
-        return tooManyRequests(exception.getMessage(), exception.getRetryAfterSeconds());
+        ErrorResponse body = new ErrorResponse(429, HttpStatus.TOO_MANY_REQUESTS.getReasonPhrase(),
+                exception.getMessage(), AiDailyLimitExceededException.CODE);
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(exception.getRetryAfterSeconds()))
+                .body(body);
     }
 
     @ExceptionHandler(TooManyPasswordAttemptsException.class)
