@@ -44,6 +44,10 @@ class AccountIntegrationTest {
 
     private String registerAndLogin(String password) throws Exception {
         email = "acct-" + UUID.randomUUID() + "@example.com";
+        return registerAndLoginAs(email, password);
+    }
+
+    private String registerAndLoginAs(String email, String password) throws Exception {
         mockMvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"email\":\"" + email + "\",\"password\":\"" + password + "\",\"name\":\"Asha\"}"))
                 .andExpect(status().isCreated());
@@ -110,7 +114,7 @@ class AccountIntegrationTest {
     }
 
     @Test
-    void deleteAccountRemovesEverythingAndOldTokenGets401() throws Exception {
+    void deleteAccountRemovesDataKeepsRecordAndOldTokenGets401() throws Exception {
         String token = registerAndLogin("password123");
         byte[] pdf = Files.readAllBytes(Path.of("src/test/resources/samples/01_baseline.pdf"));
         mockMvc.perform(multipart("/api/resumes/upload")
@@ -124,12 +128,39 @@ class AccountIntegrationTest {
 
         deleteMe(token, "{\"password\":\"password123\"}").andExpect(status().isNoContent());
 
-        assertTrue(userRepository.findById(userId).isEmpty());
+        // the account row stays as a record: name, email and sign-up time kept, marked deleted
+        User record = userRepository.findById(userId).orElseThrow();
+        assertTrue(record.isDeleted());
+        assertEquals("DELETED", record.getStatus());
+        assertEquals(email, record.getEmail());
+        assertNotNull(record.getCreatedAt());
+        assertNotNull(record.getDeletedAt());
+        assertTrue(userRepository.findByEmail(email).isEmpty()); // no longer an active account
         assertEquals(0, resumeRepository.countByUserId(userId));
         assertTrue(analysisRepository.findByResumeIdIn(resumeIds).isEmpty());
         mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + token))
                 .andExpect(status().isUnauthorized());
         login(email, "password123").andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void deletedEmailCanSignUpAgainAsAFreshAccount() throws Exception {
+        String token = registerAndLogin("password123");
+        Long oldId = userRepository.findByEmail(email).orElseThrow().getId();
+        deleteMe(token, "{\"password\":\"password123\"}").andExpect(status().isNoContent());
+
+        String newToken = registerAndLoginAs(email, "another456");
+        Long newId = userRepository.findByEmail(email).orElseThrow().getId();
+        assertNotEquals(oldId, newId);
+        assertEquals(2, userRepository.findAllByEmailIncludingDeleted(email).size());
+        assertTrue(userRepository.findById(oldId).orElseThrow().isDeleted());
+        mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + newToken))
+                .andExpect(status().isOk());
+        // the old token still belongs to the deleted account
+        mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + token))
+                .andExpect(status().isUnauthorized());
+        login(email, "password123").andExpect(status().isUnauthorized());
+        login(email, "another456").andExpect(status().isOk());
     }
 
     @Test

@@ -58,7 +58,7 @@ function DeleteAccount() {
 
   return (
     <Section title="Delete account">
-      <p className="text-sm text-muted max-w-prose">This permanently deletes your account, all your resumes and their scores. It can't be undone.</p>
+      <p className="text-sm text-muted max-w-prose">This closes your account and permanently deletes all your resumes, their scores and your chats. It can't be undone.</p>
       {!open ? (
         <button onClick={() => setOpen(true)} className="mt-4 h-9 px-4 rounded-md border border-bad text-bad text-sm font-medium hover:bg-bad hover:text-white transition-colors">Delete my account</button>
       ) : (
@@ -67,7 +67,7 @@ function DeleteAccount() {
           <Input label={`Type ${user.email} to confirm`} value={typed} onChange={(e) => setTyped(e.target.value)} />
           <ErrorBox message={error} />
           <div className="flex gap-2">
-            <button disabled={busy || typed.trim().toLowerCase() !== user.email} className="h-9 px-4 rounded-md bg-bad text-white text-sm font-medium disabled:opacity-40">{busy ? 'Deleting...' : 'Delete forever'}</button>
+            <button disabled={busy || typed.trim().toLowerCase() !== user.email} className="h-9 px-4 rounded-md bg-bad text-white text-sm font-medium disabled:opacity-40">{busy ? 'Deleting...' : 'Delete account'}</button>
             <Button type="button" variant="ghost" onClick={() => { setOpen(false); setTyped(''); setPassword('') }}>Cancel</Button>
           </div>
         </form>

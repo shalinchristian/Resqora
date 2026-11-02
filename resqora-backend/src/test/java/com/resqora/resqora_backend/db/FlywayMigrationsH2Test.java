@@ -10,19 +10,22 @@ import java.sql.Statement;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
-// Runs every real Flyway migration (V1..V10) on an empty H2 database in PostgreSQL mode
+// Runs every real Flyway migration (V1..V11) on an empty H2 database in PostgreSQL mode
 class FlywayMigrationsH2Test {
     @Test
-    void allMigrationsRunAndV10AddsTheNewColumnsWithSafeDefaults() throws Exception {
+    void allMigrationsRunWithSafeDefaults() throws Exception {
         JdbcDataSource dataSource = new JdbcDataSource();
         dataSource.setURL("jdbc:h2:mem:flyway-check;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1");
         dataSource.setUser("sa");
         Flyway flyway = Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load();
 
         int applied = flyway.migrate().migrationsExecuted;
-        assertTrue(applied >= 10, "migrations run: " + applied);
-        assertEquals("10", flyway.info().current().getVersion().getVersion());
+        assertTrue(applied >= 11, "migrations run: " + applied);
+        assertEquals("11", flyway.info().current().getVersion().getVersion());
 
         try (Connection connection = dataSource.getConnection(); Statement sql = connection.createStatement()) {
             sql.execute("INSERT INTO users (email, password_hash, name) VALUES ('a@example.com', 'hash', 'A')");
@@ -41,6 +44,20 @@ class FlywayMigrationsH2Test {
                 assertTrue(column.next());
                 assertEquals("1", column.getString(1)); // older analyses are recomputed by the new analyzer
             }
+            // V11: an account inserted without the new columns is active, with its email as active_email
+            sql.execute("UPDATE users SET active_email = email WHERE email = 'a@example.com'");
+            try (ResultSet row = sql.executeQuery("SELECT status, deleted_at, created_at FROM users WHERE email = 'a@example.com'")) {
+                assertTrue(row.next());
+                assertEquals("ACTIVE", row.getString(1));
+                assertNull(row.getTimestamp(2));
+                assertNotNull(row.getTimestamp(3));
+            }
+            // two deleted accounts (active_email NULL) are allowed, a second active one is not
+            sql.execute("INSERT INTO users (email, password_hash, status, active_email) VALUES ('b@example.com', 'x', 'DELETED', NULL)");
+            sql.execute("INSERT INTO users (email, password_hash, status, active_email) VALUES ('c@example.com', 'x', 'DELETED', NULL)");
+            sql.execute("INSERT INTO users (email, password_hash, active_email) VALUES ('d@example.com', 'x', 'd@example.com')");
+            assertThrows(java.sql.SQLException.class, () -> sql.execute(
+                    "INSERT INTO users (email, password_hash, active_email) VALUES ('d2@example.com', 'x', 'd@example.com')"));
         }
     }
 }
