@@ -212,9 +212,11 @@ public class AuthService {
         userRepository.save(user);
     }
 
-    // Removes the user and everything they own. Resumes are deleted explicitly (users -> resumes has no
-    // ON DELETE CASCADE); analyses and job suggestions cascade from resumes, ai_usage from users.
-    // Stored files and summaries live in the resumes rows (no files on disk), so they go with them.
+    // Soft delete. The account row stays as a record with the name, email and sign-up time, marked
+    // DELETED with the time, and can never log in again; the same email can sign up as a new account.
+    // Everything the user made is removed: resumes (analyses, AI summaries, AI answers and job
+    // suggestions cascade from them; files are stored in the resume rows) and any pending email codes.
+    // ai_usage rows stay: they only record that a call happened, and the app-wide daily AI caps count them.
     @Transactional
     public void deleteAccount(Long userId, String password) {
         User user = findUser(userId);
@@ -228,13 +230,16 @@ public class AuthService {
         passwordAttemptLimiter.recordSuccess(userId);
         resumeRepository.deleteAll(resumeRepository.findByUserIdOrderByCreatedAtDescIdDesc(userId));
         resumeRepository.flush();
-        userRepository.delete(user);
-        userRepository.flush();
+        emailCodeService.discardAll(userId);
+        user.markDeleted(java.time.Instant.now());
+        userRepository.saveAndFlush(user);
     }
 
-    // valid token but the user row is gone (e.g. deleted): treat as not authenticated -> 401
+    // valid token but the account is gone or deleted: treat as not authenticated -> 401
     private User findUser(Long userId) {
-        return userRepository.findById(userId).orElseThrow(AuthenticatedUserNotFoundException::new);
+        return userRepository.findById(userId)
+                .filter(user -> !user.isDeleted())
+                .orElseThrow(AuthenticatedUserNotFoundException::new);
     }
 
     private static MeResponse toMe(User user) {

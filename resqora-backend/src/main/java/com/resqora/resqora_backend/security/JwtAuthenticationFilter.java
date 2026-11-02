@@ -43,7 +43,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             try {
                 Long userId = jwtService.validateAndExtractUserId(token);
                 // a valid token for a deleted user is not authenticated: every endpoint answers 401
-                if (!userRepository.existsById(userId)) {
+                if (!userRepository.existsActiveById(userId)) {
                     throw new IllegalArgumentException("User no longer exists");
                 }
                 UsernamePasswordAuthenticationToken authentication =

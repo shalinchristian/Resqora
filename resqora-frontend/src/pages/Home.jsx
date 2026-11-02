@@ -87,7 +87,7 @@ export default function Home() {
         <ul className="space-y-3 text-sm text-muted">
           <li>Your file is stored so you can preview it. Only your account can open it.</li>
           <li>The AI summary is saved with your resume so it loads instantly next time.</li>
-          <li>Deleting a resume removes the file, its score and its summary. Deleting your account removes everything.</li>
+          <li>Deleting a resume removes the file, its score and its summary.</li>
           <li>For the summary and chat, your resume text and any job description you paste are sent to an AI service (Google's Gemini or Groq). Turn AI off on your dashboard and nothing is sent. The score is worked out on our server and isn't sent anywhere.</li>
         </ul>
       </section>
