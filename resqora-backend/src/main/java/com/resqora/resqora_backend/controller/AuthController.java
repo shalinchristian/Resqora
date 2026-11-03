@@ -12,6 +12,7 @@ import com.resqora.resqora_backend.dto.RegisterResponse;
 import com.resqora.resqora_backend.dto.RegistrationRequest;
 import com.resqora.resqora_backend.dto.UpdateMeRequest;
 import com.resqora.resqora_backend.entity.User;
+import com.resqora.resqora_backend.security.ClientIpResolver;
 import com.resqora.resqora_backend.service.AuthService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -31,15 +32,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/auth")
 public class AuthController {
     private final AuthService authService;
+    private final ClientIpResolver clientIpResolver;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, ClientIpResolver clientIpResolver) {
         this.authService = authService;
+        this.clientIpResolver = clientIpResolver;
     }
 
     @PostMapping("/register")
     public ResponseEntity<RegisterResponse> register(@Valid @RequestBody RegistrationRequest request,
                                                      HttpServletRequest httpRequest) {
-        User user = authService.register(request, httpRequest.getRemoteAddr());
+        User user = authService.register(request, clientIpResolver.resolve(httpRequest));
         // emailVerified false -> the frontend shows the "enter the code we emailed you" screen
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(new RegisterResponse(user.getId(), user.getEmail(), user.getName(), user.isEmailVerified()));
@@ -53,13 +56,13 @@ public class AuthController {
     // 202 Accepted every time: the answer never says whether the email has an account
     @PostMapping("/resend-code")
     public ResponseEntity<Void> resendVerification(@Valid @RequestBody EmailRequest request, HttpServletRequest httpRequest) {
-        authService.resendVerification(request.email(), httpRequest.getRemoteAddr());
+        authService.resendVerification(request.email(), clientIpResolver.resolve(httpRequest));
         return ResponseEntity.accepted().build();
     }
 
     @PostMapping("/forgot-password")
     public ResponseEntity<Void> forgotPassword(@Valid @RequestBody EmailRequest request, HttpServletRequest httpRequest) {
-        authService.forgotPassword(request.email(), httpRequest.getRemoteAddr());
+        authService.forgotPassword(request.email(), clientIpResolver.resolve(httpRequest));
         return ResponseEntity.accepted().build();
     }
 
@@ -71,8 +74,8 @@ public class AuthController {
 
     @PostMapping("/login")
     public LoginResponse login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest) {
-        // getRemoteAddr only: X-Forwarded-For can be faked by the client
-        return authService.login(request, httpRequest.getRemoteAddr());
+        // the real visitor IP behind Render's proxy (see ClientIpResolver), never X-Forwarded-For
+        return authService.login(request, clientIpResolver.resolve(httpRequest));
     }
 
     @GetMapping("/me")
