@@ -14,4 +14,8 @@ public interface EmailCodeRepository extends JpaRepository<EmailCode, Long> {
     @Modifying
     @Query("delete from EmailCode c where c.userId = :userId and c.purpose = :purpose")
     void deleteByUserIdAndPurpose(@Param("userId") Long userId, @Param("purpose") EmailCode.Purpose purpose);
+
+    @Modifying
+    @Query("delete from EmailCode c where c.userId = :userId")
+    void deleteByUserId(@Param("userId") Long userId);
 }

@@ -1,6 +1,5 @@
 package com.resqora.resqora_backend.service;
 
-import com.resqora.resqora_backend.demo.DemoAccountGuard;
 import com.resqora.resqora_backend.dto.resume.ResumeListResponse;
 import com.resqora.resqora_backend.dto.resume.ResumeSummary;
 import com.resqora.resqora_backend.dto.resume.ResumeUploadResponse;
@@ -24,7 +23,6 @@ import com.resqora.resqora_backend.service.parser.ResumeParser;
 import com.resqora.resqora_backend.service.analysis.ResumeAnalyzer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -52,9 +50,7 @@ public class ResumeService {
     private final ResumeAnalyzer resumeAnalyzer;
     private final ResumeAnalysisRepository resumeAnalysisRepository;
     private final TransactionTemplate transactionTemplate;
-    private final DemoAccountGuard demoAccountGuard;
 
-    // without the demo guard (unit tests): demo mode off
     public ResumeService(
             DocumentTextExtractionService documentTextExtractionService,
             ResumeRepository resumeRepository,
@@ -63,21 +59,6 @@ public class ResumeService {
             ResumeAnalyzer resumeAnalyzer,
             ResumeAnalysisRepository resumeAnalysisRepository,
             TransactionTemplate transactionTemplate) {
-        this(documentTextExtractionService, resumeRepository, userRepository, resumeParser, resumeAnalyzer,
-                resumeAnalysisRepository, transactionTemplate, new DemoAccountGuard(false));
-    }
-
-    @Autowired
-    public ResumeService(
-            DocumentTextExtractionService documentTextExtractionService,
-            ResumeRepository resumeRepository,
-            UserRepository userRepository,
-            ResumeParser resumeParser,
-            ResumeAnalyzer resumeAnalyzer,
-            ResumeAnalysisRepository resumeAnalysisRepository,
-            TransactionTemplate transactionTemplate,
-            DemoAccountGuard demoAccountGuard) {
-        this.demoAccountGuard = demoAccountGuard;
         this.documentTextExtractionService = documentTextExtractionService;
         this.resumeRepository = resumeRepository;
         this.userRepository = userRepository;
@@ -220,7 +201,6 @@ public class ResumeService {
 
     public void deleteResume(Long resumeId, Authentication authentication) {
         Resume resume = findOwnedResume(resumeId, authentication);
-        demoAccountGuard.rejectIfDemo(resume.getUser());
         resumeRepository.delete(resume);
     }
 

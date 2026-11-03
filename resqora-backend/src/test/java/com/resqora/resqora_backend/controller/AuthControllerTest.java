@@ -16,7 +16,7 @@ import static org.mockito.Mockito.when;
 
 class AuthControllerTest {
     private final AuthService authService = mock(AuthService.class);
-    private final AuthController authController = new AuthController(authService);
+    private final AuthController authController = new AuthController(authService, new com.resqora.resqora_backend.security.ClientIpResolver(true));
 
     @Test
     void returnsAuthenticatedUserDetails() {

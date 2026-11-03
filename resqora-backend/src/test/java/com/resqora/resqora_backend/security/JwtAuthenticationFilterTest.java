@@ -27,7 +27,7 @@ class JwtAuthenticationFilterTest {
 
     private static com.resqora.resqora_backend.repository.UserRepository existingUsers() {
         var users = org.mockito.Mockito.mock(com.resqora.resqora_backend.repository.UserRepository.class);
-        org.mockito.Mockito.when(users.existsById(org.mockito.ArgumentMatchers.anyLong())).thenReturn(true);
+        org.mockito.Mockito.when(users.existsActiveById(org.mockito.ArgumentMatchers.anyLong())).thenReturn(true);
         return users;
     }
 

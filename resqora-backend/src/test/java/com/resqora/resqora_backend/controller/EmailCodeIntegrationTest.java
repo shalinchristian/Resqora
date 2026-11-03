@@ -28,8 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = {
         "resqora.email.require-verification=true",
         "resqora.email.resend-cooldown-seconds=0",
-        "resqora.email.max-code-requests-per-ip=1000",
-        "resqora.demo.enabled=true"})
+        "resqora.email.max-code-requests-per-ip=1000"})
 @AutoConfigureMockMvc
 class EmailCodeIntegrationTest {
     // records emails instead of calling Resend
@@ -196,13 +195,6 @@ class EmailCodeIntegrationTest {
                 .andExpect(jsonPath("$.message").value("Invalid or expired code"));
     }
 
-    @Test
-    void demoAccountStaysVerifiedAndCannotBeReset() throws Exception {
-        var demo = userRepository.findByEmail("demo@resqora.app").orElseThrow();
-        assertTrue(demo.isEmailVerified());
-        postJson("/api/auth/forgot-password", "{\"email\":\"demo@resqora.app\"}").andExpect(status().isAccepted());
-        assertNull(emails.sent.get("demo@resqora.app"));
-    }
 
     @Test
     void badCodeFormatIs400() throws Exception {

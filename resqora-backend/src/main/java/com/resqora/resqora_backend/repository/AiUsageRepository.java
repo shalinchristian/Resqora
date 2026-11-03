@@ -11,7 +11,4 @@ public interface AiUsageRepository extends JpaRepository<AiUsage, Long> {
 
     // per-user limit for one kind (like this user's chat messages today)
     long countByUserIdAndKindAndCreatedAtGreaterThanEqual(Long userId, AiUsage.Kind kind, Instant since);
-
-    // demo reset: clear the demo user's AI usage so its daily limit starts fresh
-    long deleteByUserId(Long userId);
 }

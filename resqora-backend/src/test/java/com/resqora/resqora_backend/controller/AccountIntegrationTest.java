@@ -1,7 +1,6 @@
 package com.resqora.resqora_backend.controller;
 
 import com.jayway.jsonpath.JsonPath;
-import com.resqora.resqora_backend.demo.DemoDataSeeder;
 import com.resqora.resqora_backend.entity.Resume;
 import com.resqora.resqora_backend.entity.User;
 import com.resqora.resqora_backend.repository.ResumeAnalysisRepository;
@@ -44,6 +43,10 @@ class AccountIntegrationTest {
 
     private String registerAndLogin(String password) throws Exception {
         email = "acct-" + UUID.randomUUID() + "@example.com";
+        return registerAndLoginAs(email, password);
+    }
+
+    private String registerAndLoginAs(String email, String password) throws Exception {
         mockMvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"email\":\"" + email + "\",\"password\":\"" + password + "\",\"name\":\"Asha\"}"))
                 .andExpect(status().isCreated());
@@ -110,7 +113,7 @@ class AccountIntegrationTest {
     }
 
     @Test
-    void deleteAccountRemovesEverythingAndOldTokenGets401() throws Exception {
+    void deleteAccountRemovesDataKeepsRecordAndOldTokenGets401() throws Exception {
         String token = registerAndLogin("password123");
         byte[] pdf = Files.readAllBytes(Path.of("src/test/resources/samples/01_baseline.pdf"));
         mockMvc.perform(multipart("/api/resumes/upload")
@@ -124,12 +127,39 @@ class AccountIntegrationTest {
 
         deleteMe(token, "{\"password\":\"password123\"}").andExpect(status().isNoContent());
 
-        assertTrue(userRepository.findById(userId).isEmpty());
+        // the account row stays as a record: name, email and sign-up time kept, marked deleted
+        User record = userRepository.findById(userId).orElseThrow();
+        assertTrue(record.isDeleted());
+        assertEquals("DELETED", record.getStatus());
+        assertEquals(email, record.getEmail());
+        assertNotNull(record.getCreatedAt());
+        assertNotNull(record.getDeletedAt());
+        assertTrue(userRepository.findByEmail(email).isEmpty()); // no longer an active account
         assertEquals(0, resumeRepository.countByUserId(userId));
         assertTrue(analysisRepository.findByResumeIdIn(resumeIds).isEmpty());
         mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + token))
                 .andExpect(status().isUnauthorized());
         login(email, "password123").andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void deletedEmailCanSignUpAgainAsAFreshAccount() throws Exception {
+        String token = registerAndLogin("password123");
+        Long oldId = userRepository.findByEmail(email).orElseThrow().getId();
+        deleteMe(token, "{\"password\":\"password123\"}").andExpect(status().isNoContent());
+
+        String newToken = registerAndLoginAs(email, "another456");
+        Long newId = userRepository.findByEmail(email).orElseThrow().getId();
+        assertNotEquals(oldId, newId);
+        assertEquals(2, userRepository.findAllByEmailIncludingDeleted(email).size());
+        assertTrue(userRepository.findById(oldId).orElseThrow().isDeleted());
+        mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + newToken))
+                .andExpect(status().isOk());
+        // the old token still belongs to the deleted account
+        mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + token))
+                .andExpect(status().isUnauthorized());
+        login(email, "password123").andExpect(status().isUnauthorized());
+        login(email, "another456").andExpect(status().isOk());
     }
 
     @Test
@@ -157,21 +187,4 @@ class AccountIntegrationTest {
         }
     }
 
-    @Test
-    void demoSeederCreatesAnalysedResumesAndIsIdempotent() throws Exception {
-        userRepository.findByEmail(DemoDataSeeder.DEMO_EMAIL).ifPresent(u -> {
-            resumeRepository.deleteAll(resumeRepository.findByUserIdOrderByCreatedAtDescIdDesc(u.getId()));
-            userRepository.delete(u);
-        });
-        DemoDataSeeder seeder = new DemoDataSeeder(userRepository, passwordEncoder, resumeService, resumeRepository, aiUsageRepository, transactionTemplate, "Demo1234");
-        seeder.seed();
-        seeder.seed();
-
-        User demo = userRepository.findByEmail(DemoDataSeeder.DEMO_EMAIL).orElseThrow();
-        assertEquals("Demo User", demo.getName());
-        List<Long> ids = resumeRepository.findByUserIdOrderByCreatedAtDescIdDesc(demo.getId()).stream().map(Resume::getId).toList();
-        assertEquals(3, ids.size());
-        assertEquals(3, analysisRepository.findByResumeIdIn(ids).size());
-        login(DemoDataSeeder.DEMO_EMAIL, "Demo1234").andExpect(status().isOk());
-    }
 }

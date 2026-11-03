@@ -289,7 +289,7 @@ On Windows, use `.\mvnw.cmd test`. The tests use H2 and test doubles for externa
 | `RESQORA_JOBICY_BASE_URL` | `https://jobicy.com/api/v2` | Jobicy API base URL |
 | `RESQORA_SWAGGER_ENABLED` | `true` | Enables/disables Swagger UI and API docs |
 
-Login throttling and demo-account options are also configurable through environment variables; see `resqora-backend/src/main/resources/application.properties` for their defaults.
+Login throttling options are also configurable through environment variables; see `resqora-backend/src/main/resources/application.properties` for their defaults.
 
 </details>
 

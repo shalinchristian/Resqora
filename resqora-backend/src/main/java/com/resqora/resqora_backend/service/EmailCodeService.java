@@ -104,4 +104,8 @@ public class EmailCodeService {
     public void discard(Long userId, Purpose purpose) {
         repository.deleteByUserIdAndPurpose(userId, purpose);
     }
+
+    public void discardAll(Long userId) {
+        repository.deleteByUserId(userId);
+    }
 }

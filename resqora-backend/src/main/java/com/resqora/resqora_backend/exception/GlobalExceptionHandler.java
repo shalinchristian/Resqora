@@ -75,11 +75,6 @@ public class GlobalExceptionHandler {
         return errorResponse(HttpStatus.FORBIDDEN, exception.getMessage());
     }
 
-    @ExceptionHandler(DemoAccountReadOnlyException.class)
-    public ResponseEntity<ErrorResponse> handleDemoReadOnly(DemoAccountReadOnlyException exception) {
-        return errorResponse(HttpStatus.FORBIDDEN, exception.getMessage());
-    }
-
     @ExceptionHandler(AuthenticatedUserNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleAuthenticatedUserNotFound(
             AuthenticatedUserNotFoundException exception) {
