@@ -1,7 +1,6 @@
 package com.resqora.resqora_backend.controller;
 
 import com.jayway.jsonpath.JsonPath;
-import com.resqora.resqora_backend.demo.DemoDataSeeder;
 import com.resqora.resqora_backend.entity.Resume;
 import com.resqora.resqora_backend.entity.User;
 import com.resqora.resqora_backend.repository.ResumeAnalysisRepository;
@@ -188,21 +187,4 @@ class AccountIntegrationTest {
         }
     }
 
-    @Test
-    void demoSeederCreatesAnalysedResumesAndIsIdempotent() throws Exception {
-        userRepository.findByEmail(DemoDataSeeder.DEMO_EMAIL).ifPresent(u -> {
-            resumeRepository.deleteAll(resumeRepository.findByUserIdOrderByCreatedAtDescIdDesc(u.getId()));
-            userRepository.delete(u);
-        });
-        DemoDataSeeder seeder = new DemoDataSeeder(userRepository, passwordEncoder, resumeService, resumeRepository, aiUsageRepository, transactionTemplate, "Demo1234");
-        seeder.seed();
-        seeder.seed();
-
-        User demo = userRepository.findByEmail(DemoDataSeeder.DEMO_EMAIL).orElseThrow();
-        assertEquals("Demo User", demo.getName());
-        List<Long> ids = resumeRepository.findByUserIdOrderByCreatedAtDescIdDesc(demo.getId()).stream().map(Resume::getId).toList();
-        assertEquals(3, ids.size());
-        assertEquals(3, analysisRepository.findByResumeIdIn(ids).size());
-        login(DemoDataSeeder.DEMO_EMAIL, "Demo1234").andExpect(status().isOk());
-    }
 }

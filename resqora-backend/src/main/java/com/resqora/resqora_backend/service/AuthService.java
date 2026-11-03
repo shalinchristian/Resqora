@@ -1,6 +1,5 @@
 package com.resqora.resqora_backend.service;
 
-import com.resqora.resqora_backend.demo.DemoAccountGuard;
 import com.resqora.resqora_backend.dto.ChangePasswordRequest;
 import com.resqora.resqora_backend.dto.LoginRequest;
 import com.resqora.resqora_backend.dto.LoginResponse;
@@ -34,7 +33,6 @@ public class AuthService {
     private final JwtService jwtService;
     private final LoginAttemptLimiter loginAttemptLimiter;
     private final ResumeRepository resumeRepository;
-    private final DemoAccountGuard demoAccountGuard;
     private final PasswordAttemptLimiter passwordAttemptLimiter;
     private final EmailCodeService emailCodeService;
     private final CodeRequestLimiter codeRequestLimiter;
@@ -47,7 +45,6 @@ public class AuthService {
             JwtService jwtService,
             LoginAttemptLimiter loginAttemptLimiter,
             ResumeRepository resumeRepository,
-            DemoAccountGuard demoAccountGuard,
             PasswordAttemptLimiter passwordAttemptLimiter,
             EmailCodeService emailCodeService,
             CodeRequestLimiter codeRequestLimiter,
@@ -57,7 +54,6 @@ public class AuthService {
         this.requireEmailVerification = requireEmailVerification;
         this.passwordAttemptLimiter = passwordAttemptLimiter;
         this.resumeRepository = resumeRepository;
-        this.demoAccountGuard = demoAccountGuard;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
@@ -121,21 +117,17 @@ public class AuthService {
                 .ifPresent(user -> emailCodeService.issue(user, Purpose.VERIFY_EMAIL));
     }
 
-    // Same rule: always 202. The demo account is shared, so its password can't be reset.
+    // Same rule: always 202, whether or not the email exists.
     @Transactional
     public void forgotPassword(String email, String clientIp) {
         rejectIfTooManyCodeRequests(clientIp);
         userRepository.findByEmail(email)
-                .filter(user -> !demoAccountGuard.isDemo(user))
                 .ifPresent(user -> emailCodeService.issue(user, Purpose.RESET_PASSWORD));
     }
 
     @Transactional(noRollbackFor = InvalidCodeException.class)
     public void resetPassword(ResetPasswordRequest request) {
         User user = userRepository.findByEmail(request.email()).orElseThrow(InvalidCodeException::new);
-        if (demoAccountGuard.isDemo(user)) {
-            throw new InvalidCodeException();
-        }
         emailCodeService.consume(user.getId(), Purpose.RESET_PASSWORD, request.code());
         user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
         // the code reached their inbox, which proves they own the email
@@ -180,12 +172,10 @@ public class AuthService {
         return toMe(findUser(userId));
     }
 
-    // Only the fields that were sent are changed. The shared demo account stays read-only (403),
-    // so one visitor can't switch AI off for everyone else using it.
+    // Only the fields that were sent are changed.
     @Transactional
     public MeResponse updateMe(Long userId, UpdateMeRequest request) {
         User user = findUser(userId);
-        demoAccountGuard.rejectIfDemo(user);
         if (request.name() != null) {
             user.setName(request.name());
         }
@@ -198,7 +188,6 @@ public class AuthService {
     @Transactional
     public void changePassword(Long userId, ChangePasswordRequest request) {
         User user = findUser(userId);
-        demoAccountGuard.rejectIfDemo(user);
         passwordAttemptLimiter.rejectIfBlocked(userId);
         if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
             passwordAttemptLimiter.recordFailure(userId);
@@ -220,7 +209,6 @@ public class AuthService {
     @Transactional
     public void deleteAccount(Long userId, String password) {
         User user = findUser(userId);
-        demoAccountGuard.rejectIfDemo(user);
         // brute-force protection: 5 wrong passwords per user in 15 min -> 429 (checked before the hash)
         passwordAttemptLimiter.rejectIfBlocked(userId);
         if (!passwordEncoder.matches(password, user.getPasswordHash())) {

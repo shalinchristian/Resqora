@@ -1,7 +1,6 @@
 package com.resqora.resqora_backend.controller;
 
 import com.jayway.jsonpath.JsonPath;
-import com.resqora.resqora_backend.demo.DemoDataSeeder;
 import com.resqora.resqora_backend.entity.AiUsage;
 import com.resqora.resqora_backend.entity.Resume;
 import com.resqora.resqora_backend.entity.User;
@@ -29,15 +28,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-// Slice 14: demo protection + reset, Big B's open bugs (B6, B9-B13), unreadable-layout topFinding
-@SpringBootTest(properties = {"resqora.demo.enabled=true", "resqora.login.max-attempts-per-email=2"})
+// Slice 14: Big B's open bugs (B6, B9-B13), unreadable-layout topFinding
+@SpringBootTest(properties = {"resqora.login.max-attempts-per-email=2"})
 @AutoConfigureMockMvc
 class Slice14IntegrationTest {
     @Autowired private MockMvc mockMvc;
     @Autowired private UserRepository userRepository;
     @Autowired private ResumeRepository resumeRepository;
     @Autowired private AiUsageRepository aiUsageRepository;
-    @Autowired private DemoDataSeeder seeder;
 
     private ResultActions login(String email, String password) throws Exception {
         return mockMvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
@@ -56,10 +54,6 @@ class Slice14IntegrationTest {
         return token(login(email, "abc12345"));
     }
 
-    private String demoToken() throws Exception {
-        seeder.seed();
-        return token(login(DemoDataSeeder.DEMO_EMAIL, "Demo1234"));
-    }
 
     private MockMultipartFile docx(String... paragraphs) throws Exception {
         try (XWPFDocument doc = new XWPFDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
@@ -80,48 +74,8 @@ class Slice14IntegrationTest {
         return ((Number) JsonPath.read(body, "$.id")).longValue();
     }
 
-    @Test
-    void demoAccountCannotBeChanged() throws Exception {
-        String token = demoToken();
-        User demo = userRepository.findByEmail(DemoDataSeeder.DEMO_EMAIL).orElseThrow();
-        Long resumeId = resumeRepository.findByUserIdOrderByCreatedAtDescIdDesc(demo.getId()).get(0).getId();
-        String auth = "Bearer " + token;
-        mockMvc.perform(delete("/api/resumes/" + resumeId).header("Authorization", auth))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.message").value("The demo account can't be changed"));
-        mockMvc.perform(delete("/api/auth/me").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"password\":\"Demo1234\"}")).andExpect(status().isForbidden());
-        mockMvc.perform(put("/api/auth/password").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"currentPassword\":\"Demo1234\",\"newPassword\":\"Other1234\"}")).andExpect(status().isForbidden());
-        mockMvc.perform(patch("/api/auth/me").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"name\":\"Hacked\"}")).andExpect(status().isForbidden());
-        assertEquals(3, resumeRepository.findByUserIdOrderByCreatedAtDescIdDesc(demo.getId()).size());
-        login(DemoDataSeeder.DEMO_EMAIL, "Demo1234").andExpect(status().isOk());
-    }
 
-    @Test
-    void ordinaryUsersAreNotAffectedByDemoMode() throws Exception {
-        String token = newUser();
-        long id = upload(token, docx("Asha Rao", "asha@x.com", "SKILLS", "Java, SQL"));
-        mockMvc.perform(delete("/api/resumes/" + id).header("Authorization", "Bearer " + token))
-                .andExpect(status().isNoContent());
-    }
 
-    @Test
-    void startupSeedResetsDemoData() throws Exception {
-        String token = demoToken();
-        User demo = userRepository.findByEmail(DemoDataSeeder.DEMO_EMAIL).orElseThrow();
-        upload(token, docx("Extra", "extra@x.com", "SKILLS", "Go"));
-        aiUsageRepository.save(new AiUsage(demo, AiUsage.Kind.CHAT, AiUsage.Provider.GEMINI));
-        assertEquals(4, resumeRepository.findByUserIdOrderByCreatedAtDescIdDesc(demo.getId()).size());
-
-        seeder.seed();
-
-        List<Resume> resumes = resumeRepository.findByUserIdOrderByCreatedAtDescIdDesc(demo.getId());
-        assertEquals(3, resumes.size());
-        assertEquals(0, aiUsageRepository.countByUserIdAndKindAndCreatedAtGreaterThanEqual(demo.getId(), AiUsage.Kind.CHAT, Instant.EPOCH));
-        assertEquals(demo.getId(), userRepository.findByEmail(DemoDataSeeder.DEMO_EMAIL).orElseThrow().getId());
-    }
 
     @Test
     void unreadableLayoutIsTheTopFinding() throws Exception {
