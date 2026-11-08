@@ -101,7 +101,7 @@ export function fromParsed(parsed) {
   return draft
 }
 
-// POST /api/builder/export — matches Ben's parsed-resume shape plus templateId and summary.
+// POST /api/builder/export — parsed-resume shape plus templateId, summary, headline, linkedin, github.
 export function toPayload(draft) {
   const c = draft.contact || {}
   const filled = (row) => Object.values(row).some((v) => (typeof v === 'string' ? v.trim() : v))
@@ -111,6 +111,9 @@ export function toPayload(draft) {
     email: (c.email || '').trim(),
     phone: (c.phone || '').trim(),
     location: (c.city || '').trim(),
+    headline: (c.headline || '').trim(),
+    linkedin: (c.linkedin || '').trim(),
+    github: (c.github || '').trim(),
     summary: (draft.summary || '').trim(),
     skills: (draft.skills || '').split(/[·,\n]/).map((s) => s.trim()).filter(Boolean),
     experience: (draft.experience || []).map((j) => ({

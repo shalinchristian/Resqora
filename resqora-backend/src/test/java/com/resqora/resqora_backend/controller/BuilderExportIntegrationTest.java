@@ -128,6 +128,68 @@ class BuilderExportIntegrationTest {
     }
 
     @Test
+    void headlineAndProfileLinksAreExported() throws Exception {
+        String body = VALID.replace("\"location\":\"Gurugram\",", "\"location\":\"Gurugram\","
+                + "\"headline\":\"Data Analyst | SQL, Power BI\",\"linkedin\":\"linkedin.com/in/priya-sharma\","
+                + "\"github\":\"github.com/priyasharma\",");
+        byte[] file = mockMvc.perform(post("/api/builder/export")
+                        .header("Authorization", token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsByteArray();
+        try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(file));
+             XWPFWordExtractor extractor = new XWPFWordExtractor(document)) {
+            String text = extractor.getText();
+            assertTrue(text.contains("Data Analyst | SQL, Power BI"), text);
+            assertTrue(text.contains("linkedin.com/in/priya-sharma"), text);
+            assertTrue(text.contains("github.com/priyasharma"), text);
+        }
+    }
+
+    @Test
+    void requestWithoutNewFieldsStillOmitsThem() throws Exception {
+        byte[] file = mockMvc.perform(post("/api/builder/export")
+                        .header("Authorization", token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsByteArray();
+        try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(file));
+             XWPFWordExtractor extractor = new XWPFWordExtractor(document)) {
+            String text = extractor.getText().toLowerCase();
+            assertFalse(text.contains("linkedin"));
+            assertFalse(text.contains("github"));
+            assertTrue(text.startsWith("priya sharma\npriya@example.com"), text);
+        }
+    }
+
+    @Test
+    void overlongHeadlineIs400() throws Exception {
+        overlong("headline", 201);
+    }
+
+    @Test
+    void overlongLinkedinIs400() throws Exception {
+        overlong("linkedin", 501);
+    }
+
+    @Test
+    void overlongGithubIs400() throws Exception {
+        overlong("github", 501);
+    }
+
+    private void overlong(String field, int length) throws Exception {
+        mockMvc.perform(post("/api/builder/export")
+                        .header("Authorization", token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"templateId\":\"classic\",\"name\":\"Joel Thomas\",\"" + field + "\":\""
+                                + "a".repeat(length) + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(containsString(field)));
+    }
+
+    @Test
     void withoutJwtIs401() throws Exception {
         mockMvc.perform(post("/api/builder/export")
                         .contentType(MediaType.APPLICATION_JSON)
