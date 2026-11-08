@@ -82,4 +82,33 @@ export const api = {
     if (!res.ok) throw new ApiError(res.status, 'File not available')
     return res.blob()
   },
+  // Built resume as a .docx. Same shape as GET /api/resumes/{id}/parsed, plus templateId and summary.
+  exportResume: async (payload) => {
+    const headers = { 'Content-Type': 'application/json' }
+    const token = getToken()
+    if (token) headers.Authorization = `Bearer ${token}`
+    let res
+    try {
+      res = await fetch(`${API_BASE}/api/builder/export`, { method: 'POST', headers, body: JSON.stringify(payload) })
+    } catch {
+      throw new ApiError(0, "Can't reach the server. Check your connection and try again.")
+    }
+    if (!res.ok) {
+      const text = await res.text()
+      let data = null
+      try { data = text ? JSON.parse(text) : null } catch { data = null }
+      if (res.status === 401 && token) {
+        clearToken()
+        window.dispatchEvent(new Event('resqora:logout'))
+      }
+      throw new ApiError(res.status, data?.message || `Request failed (${res.status})`, data)
+    }
+    const blob = await res.blob()
+    const disp = res.headers.get('Content-Disposition') || ''
+    const starred = /filename\*=(?:UTF-8''|"?)([^";]+)/i.exec(disp)
+    const plain = /filename="?([^";]+)"?/i.exec(disp)
+    const match = starred || plain
+    const filename = match ? decodeURIComponent(match[1].replace(/"/g, '')) : 'resume.docx'
+    return { blob, filename }
+  },
 }
