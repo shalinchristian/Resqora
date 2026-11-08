@@ -17,9 +17,14 @@ public record BuilderExportRequest(
                 message = "must be one of classic, combination, campus, centered, header-band")
         String templateId,
         @NotBlank @Size(max = 200) String name,
+        // optional line under the name, e.g. "Backend Developer | Java, Spring Boot"
+        @Size(max = 200) String headline,
         @Size(max = 320) String email,
         @Size(max = 50) String phone,
         @Size(max = 200) String location,
+        // printed exactly as typed (URL or handle) on the contact line
+        @Size(max = 500) String linkedin,
+        @Size(max = 500) String github,
         @Size(max = 2000) String summary,
         @Size(max = 100) List<String> skills,
         @Size(max = 30) List<ExperienceEntry> experience,

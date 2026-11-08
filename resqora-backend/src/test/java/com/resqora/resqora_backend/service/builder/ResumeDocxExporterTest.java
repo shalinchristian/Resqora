@@ -28,8 +28,8 @@ class ResumeDocxExporterTest {
     private final ResumeDocxExporter exporter = new ResumeDocxExporter();
 
     private static BuilderExportRequest request(String templateId) {
-        return new BuilderExportRequest(templateId, "Rohan Kulkarni", "rohan@example.com", "+91 98765 43210",
-                "Pune", "Backend developer who likes small, well-tested services.",
+        return new BuilderExportRequest(templateId, "Rohan Kulkarni", null, "rohan@example.com", "+91 98765 43210",
+                "Pune", null, null, "Backend developer who likes small, well-tested services.",
                 List.of("Java", "Spring Boot"),
                 List.of(new ExperienceEntry("Acme Labs", "Software Engineer", "2024 – Present",
                         "Built the billing API\n\n  Cut response time by 40%  \n")),
@@ -110,7 +110,7 @@ class ResumeDocxExporterTest {
 
     @Test
     void writesOnlyWhatWasSent() throws Exception {
-        BuilderExportRequest minimal = new BuilderExportRequest("classic", "Asha Nair", null, null, null, null,
+        BuilderExportRequest minimal = new BuilderExportRequest("classic", "Asha Nair", null, null, null, null, null, null, null,
                 List.of("Python"), null, null, null, null);
         String text = text(exporter.export(minimal));
         assertEquals("Asha Nair\nSKILLS\nPython\n", text);
@@ -192,6 +192,68 @@ class ResumeDocxExporterTest {
             for (XWPFRun run : band.getRuns()) {
                 assertTrue(run.getEmbeddedPictures().isEmpty());
             }
+        }
+    }
+
+    private static BuilderExportRequest withProfile(String templateId) {
+        BuilderExportRequest base = request(templateId);
+        return new BuilderExportRequest(templateId, base.name(), "Backend Developer | Java, Spring Boot",
+                base.email(), base.phone(), base.location(), "linkedin.com/in/rohan-kulkarni",
+                "https://github.com/rohank", base.summary(), base.skills(), base.experience(), base.education(),
+                base.projects(), base.certifications());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"classic", "combination", "campus", "centered", "header-band"})
+    void headlineAndProfileLinksAreWrittenAsTypedWhenSent(String templateId) throws Exception {
+        byte[] bytes = exporter.export(withProfile(templateId));
+        String text = text(bytes);
+        assertTrue(text.startsWith("Rohan Kulkarni"), text);
+        assertTrue(text.contains("Backend Developer | Java, Spring Boot"), text);
+        assertTrue(text.contains("rohan@example.com  ·  +91 98765 43210  ·  Pune  ·  "
+                + "linkedin.com/in/rohan-kulkarni  ·  https://github.com/rohank"), text);
+        // headline sits between the name and the contact line
+        assertTrue(text.indexOf("Backend Developer") < text.indexOf("rohan@example.com"));
+        try (XWPFDocument document = open(bytes)) {
+            assertTrue(document.getAllPictures().isEmpty());
+            assertTrue(document.getTables().isEmpty());
+            assertTrue(document.getHyperlinks().length == 0, "plain text, not hyperlinks");
+        }
+    }
+
+    @Test
+    void headlineIs12ptRegularOnItsOwnLine() throws Exception {
+        try (XWPFDocument document = open(exporter.export(withProfile("classic")))) {
+            XWPFParagraph headline = document.getParagraphs().get(1);
+            assertEquals("Backend Developer | Java, Spring Boot", headline.getText());
+            XWPFRun run = headline.getRuns().get(0);
+            assertEquals(12.0, run.getFontSizeAsDouble());
+            assertFalse(run.isBold());
+            assertEquals(ParagraphAlignment.LEFT, headline.getAlignment());
+        }
+        try (XWPFDocument document = open(exporter.export(withProfile("centered")))) {
+            assertEquals(ParagraphAlignment.CENTER, document.getParagraphs().get(1).getAlignment());
+            assertEquals("Backend Developer | Java, Spring Boot", document.getParagraphs().get(1).getText());
+        }
+        try (XWPFDocument document = open(exporter.export(withProfile("header-band")))) {
+            XWPFParagraph band = document.getParagraphs().get(0);
+            assertTrue(band.getCTP().getPPr().isSetShd());
+            assertTrue(band.getText().contains("Backend Developer | Java, Spring Boot"));
+            assertTrue(band.getText().contains("https://github.com/rohank"));
+        }
+    }
+
+    @Test
+    void headlineAndProfileLinksAreOmittedWhenBlankOrMissing() throws Exception {
+        BuilderExportRequest base = request("classic");
+        BuilderExportRequest blank = new BuilderExportRequest("classic", base.name(), "  ", base.email(),
+                base.phone(), base.location(), "", null, base.summary(), base.skills(), base.experience(),
+                base.education(), base.projects(), base.certifications());
+        for (BuilderExportRequest request : List.of(base, blank)) {
+            String text = text(exporter.export(request));
+            assertTrue(text.startsWith("Rohan Kulkarni\nrohan@example.com  ·  +91 98765 43210  ·  Pune\n"), text);
+            assertFalse(text.toLowerCase().contains("linkedin"));
+            assertFalse(text.toLowerCase().contains("github"));
         }
     }
 

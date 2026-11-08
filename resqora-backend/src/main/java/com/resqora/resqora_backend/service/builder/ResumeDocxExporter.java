@@ -49,6 +49,7 @@ public class ResumeDocxExporter {
 
     private static final int NAME_PT = 24;
     private static final int HEADING_PT = 12;
+    private static final int HEADLINE_PT = 12;
     private static final int BODY_PT = 11;
 
     private static final int AFTER_HEADING = 6 * 20;
@@ -156,7 +157,8 @@ public class ResumeDocxExporter {
 
         private void writeHeader(BuilderExportRequest request) {
             String contact = String.join("  ·  ", java.util.stream.Stream.of(
-                            request.email(), request.phone(), request.location())
+                            request.email(), request.phone(), request.location(),
+                            request.linkedin(), request.github())
                     .filter(ResumeDocxExporter::has).map(String::strip).toList());
 
             if (template.headerStyle() == ResumeTemplate.HeaderStyle.BAND) {
@@ -165,8 +167,17 @@ public class ResumeDocxExporter {
                 XWPFRun name = run(band, clean(request.name()), NAME_PT);
                 name.setBold(true);
                 name.setColor(BAND_TEXT);
-                if (!contact.isEmpty()) {
+                if (has(request.headline())) {
                     name.addBreak();
+                    XWPFRun headline = run(band, clean(request.headline()), HEADLINE_PT);
+                    headline.setColor(BAND_TEXT);
+                    if (!contact.isEmpty()) {
+                        headline.addBreak();
+                    }
+                } else if (!contact.isEmpty()) {
+                    name.addBreak();
+                }
+                if (!contact.isEmpty()) {
                     run(band, contact, BODY_PT).setColor(BAND_TEXT);
                 }
                 return;
@@ -174,9 +185,15 @@ public class ResumeDocxExporter {
 
             ParagraphAlignment align = template.headerStyle() == ResumeTemplate.HeaderStyle.CENTERED
                     ? ParagraphAlignment.CENTER : ParagraphAlignment.LEFT;
-            XWPFParagraph namePara = paragraph(0, contact.isEmpty() ? 0 : 2 * 20);
+            boolean below = has(request.headline()) || !contact.isEmpty();
+            XWPFParagraph namePara = paragraph(0, below ? 2 * 20 : 0);
             namePara.setAlignment(align);
             run(namePara, clean(request.name()), NAME_PT).setBold(true);
+            if (has(request.headline())) {
+                XWPFParagraph headlinePara = paragraph(0, contact.isEmpty() ? 0 : 2 * 20);
+                headlinePara.setAlignment(align);
+                run(headlinePara, clean(request.headline()), HEADLINE_PT);
+            }
             if (!contact.isEmpty()) {
                 XWPFParagraph contactPara = paragraph(0, 0);
                 contactPara.setAlignment(align);

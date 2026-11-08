@@ -25,8 +25,8 @@ final class BuilderSamples {
     }
 
     static BuilderExportRequest classic() {
-        return new BuilderExportRequest("classic", "Aaron D'Souza",
-                "aaron.dsouza@example.com", "+91 98765 43210", "Mumbai, Maharashtra",
+        return new BuilderExportRequest("classic", "Aaron D'Souza", null,
+                "aaron.dsouza@example.com", "+91 98765 43210", "Mumbai, Maharashtra", null, null,
                 "Backend developer with two years of experience building Java and Spring Boot services for "
                         + "payments and logistics products. Comfortable owning an API from design to production "
                         + "monitoring, and keen on clean code, tests, and fast incident response.",
@@ -73,8 +73,8 @@ final class BuilderSamples {
     }
 
     static BuilderExportRequest combination() {
-        return new BuilderExportRequest("combination", "Priya Sharma",
-                "priya.sharma@example.com", "+91 91234 56789", "Gurugram, Haryana",
+        return new BuilderExportRequest("combination", "Priya Sharma", null,
+                "priya.sharma@example.com", "+91 91234 56789", "Gurugram, Haryana", null, null,
                 "Data analyst with 18 months of experience turning sales and customer data into dashboards and "
                         + "decisions. Strong in SQL, Python, and Power BI, and used to working directly with "
                         + "business teams to define metrics and answer questions quickly.",
@@ -123,8 +123,8 @@ final class BuilderSamples {
     }
 
     static BuilderExportRequest campus() {
-        return new BuilderExportRequest("campus", "Joel Thomas",
-                "joel.thomas@example.com", "+91 99887 76655", "Kochi, Kerala",
+        return new BuilderExportRequest("campus", "Joel Thomas", null,
+                "joel.thomas@example.com", "+91 99887 76655", "Kochi, Kerala", null, null,
                 "Final-year computer science student looking for a software developer role. Built and shipped "
                         + "full-stack projects used by classmates, interned on a production web app, and enjoy "
                         + "working in small teams that release often.",
@@ -171,8 +171,8 @@ final class BuilderSamples {
     }
 
     static BuilderExportRequest centered() {
-        return new BuilderExportRequest("centered", "Lydia Abraham",
-                "lydia.abraham@example.com", "+91 98450 12345", "Bengaluru, Karnataka",
+        return new BuilderExportRequest("centered", "Lydia Abraham", null,
+                "lydia.abraham@example.com", "+91 98450 12345", "Bengaluru, Karnataka", null, null,
                 "Quality assurance engineer with two years of experience testing web and mobile apps for a "
                         + "fintech product. Writes clear test cases, automates regression suites, and works closely "
                         + "with developers to stop defects reaching customers.",
@@ -218,8 +218,8 @@ final class BuilderSamples {
     }
 
     static BuilderExportRequest headerBand() {
-        return new BuilderExportRequest("header-band", "Arjun Mehta",
-                "arjun.mehta@example.com", "+91 90000 12345", "Ahmedabad, Gujarat",
+        return new BuilderExportRequest("header-band", "Arjun Mehta", null,
+                "arjun.mehta@example.com", "+91 90000 12345", "Ahmedabad, Gujarat", null, null,
                 "Frontend developer with 18 months of experience building fast, accessible React interfaces for "
                         + "SaaS products. Cares about performance, clean components, and close work with designers "
                         + "to ship polished screens.",
