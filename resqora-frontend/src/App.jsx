@@ -11,6 +11,7 @@ import Dashboard from './pages/Dashboard.jsx'
 import ResumeDetail from './pages/ResumeDetail.jsx'
 import Home from './pages/Home.jsx'
 import Account from './pages/Account.jsx'
+import ResumeBuilder from './pages/ResumeBuilder.jsx'
 import NotFound from './pages/NotFound.jsx'
 
 function HomeOrDashboard() {
@@ -92,6 +93,7 @@ export default function App() {
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/" element={<HomeOrDashboard />} />
           <Route path="/account" element={<Protected><Account /></Protected>} />
+          <Route path="/build" element={<Protected><ResumeBuilder /></Protected>} />
           <Route path="/resumes/:id" element={<Protected><ResumeDetail /></Protected>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
