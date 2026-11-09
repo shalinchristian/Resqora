@@ -1,144 +1,156 @@
-import { lines } from './model.js'
+// Live preview of the downloaded file. It renders the exact JSON sent to POST /api/builder/export
+// and mirrors ResumeTemplate / ResumeDocxExporter / ResumePdfExporter: same section order, titles,
+// contact line, fonts (Carlito = Calibri metrics, Tinos = Times metrics) and spacing in pt.
+import '@fontsource/carlito/400.css'
+import '@fontsource/carlito/400-italic.css'
+import '@fontsource/carlito/700.css'
+import '@fontsource/tinos/400.css'
+import '@fontsource/tinos/400-italic.css'
+import '@fontsource/tinos/700.css'
 import './document.css'
 
-function hasText(s) { return Boolean(s && String(s).trim()) }
+const has = (s) => typeof s === 'string' && s.trim() !== ''
+const clean = (s) => (s || '').trim()
 
-function contactLines(c) {
-  const top = [c.city, c.phone, c.email].filter(hasText)
-  const bottom = [c.linkedin, c.github].filter(hasText)
-  return { top: top.join('  |  '), bottom: bottom.join('  |  ') }
+// same rule as ResumeDocxExporter.bullets(): one per line, leading bullet marks stripped
+const bullets = (text) => (text || '').split(/\r?\n/)
+  .map((l) => l.trim().replace(/^[•\-*–·▪●]\s*/, '').trim()).filter(Boolean)
+
+const ORDER = {
+  classic: ['summary', 'highlights', 'experience', 'education', 'projects', 'skills', 'certifications', 'achievements', 'languages'],
+  combination: ['summary', 'skills', 'highlights', 'experience', 'projects', 'education', 'certifications', 'achievements', 'languages'],
+  campus: ['summary', 'highlights', 'education', 'projects', 'experience', 'skills', 'certifications', 'achievements', 'languages'],
+}
+ORDER.centered = ORDER.classic
+ORDER['header-band'] = ORDER.classic
+
+function Heading({ children }) {
+  return <h2 className="rs-h">{children}</h2>
 }
 
-function Section({ title, show, children }) {
-  if (!show) return null
+function TitleLine({ title, dates, first }) {
   return (
-    <>
-      <h2 className="rs-section">{title}</h2>
-      {children}
-    </>
-  )
-}
-
-function Job({ title, org, dates, stack, bullets }) {
-  const items = Array.isArray(bullets) ? bullets.filter(hasText) : lines(bullets)
-  if (!hasText(title) && !hasText(org) && !items.length) return null
-  return (
-    <div className="rs-job">
-      {(hasText(title) || hasText(dates)) && (
-        <div className="rs-row">
-          <p className="rs-role">{title}</p>
-          {hasText(dates) && <span className="rs-dates">{dates}</span>}
-        </div>
-      )}
-      {hasText(org) && <p className="rs-org">{org}</p>}
-      {hasText(stack) && <p className="rs-stack">{stack}</p>}
-      {items.length > 0 && (
-        <ul className="rs-list">
-          {items.map((b, i) => <li key={i}>{b}</li>)}
-        </ul>
-      )}
+    <div className={`rs-title${first ? ' rs-first' : ''}`}>
+      <span className="rs-b">{clean(title)}</span>
+      {has(dates) && <span className="rs-dates">{clean(dates)}</span>}
     </div>
   )
 }
 
-function BulletList({ items }) {
-  const list = (items || []).filter(hasText)
-  if (!list.length) return null
-  return (
-    <ul className="rs-list">
-      {list.map((b, i) => <li key={i}>{b}</li>)}
-    </ul>
-  )
+function Bullets({ items }) {
+  if (!items.length) return null
+  return <ul className="rs-ul">{items.map((b, i) => <li key={i}>{b}</li>)}</ul>
 }
 
-function Header({ data, center, extraClass }) {
-  const c = data.contact || {}
-  const { top, bottom } = contactLines(c)
-  return (
-    <header className={extraClass || undefined} style={center ? { textAlign: 'center' } : undefined}>
-      <h1 className="rs-name">{c.fullName || 'Your name'}</h1>
-      {hasText(c.headline) && <p className="rs-headline">{c.headline}</p>}
-      <p className="rs-contact">
-        {top}{top && bottom ? <br /> : null}{bottom}
-        {!top && !bottom ? '\u00a0' : null}
-      </p>
-    </header>
-  )
-}
+const strings = (list) => (list || []).filter(has).map((s) => s.trim())
 
-function ExperienceList({ jobs }) {
-  return (jobs || []).map((j, i) => (
-    <Job key={i} title={j.title} org={[j.company, j.location].filter(hasText).join(', ')} dates={j.dates} bullets={j.bullets} />
-  ))
-}
-
-function EducationList({ schools }) {
-  return (schools || []).map((e, i) => {
-    const org = [e.school, e.gpa ? `CGPA ${e.gpa}` : ''].filter(hasText).join('  ·  ')
-    return <Job key={i} title={e.degree} org={org} dates={e.dates} bullets={e.details} />
-  })
-}
-
-function ProjectList({ projects, showStack }) {
-  return (projects || []).map((p, i) => (
-    <Job key={i} title={p.name} dates={p.dates} stack={showStack ? p.stack : ''} bullets={p.bullets} />
-  ))
-}
-
-function Sections({ data, templateId }) {
-  const highlights = Array.isArray(data.highlights) ? data.highlights : lines(data.highlights)
-  const achievements = Array.isArray(data.achievements) ? data.achievements : lines(data.achievements)
-  const jobs = data.experience || []
-  const schools = data.education || []
-  const projects = data.projects || []
-  const hasJobs = jobs.some((j) => hasText(j.title) || hasText(j.company) || lines(j.bullets).length)
-  const hasSchools = schools.some((e) => hasText(e.degree) || hasText(e.school) || lines(e.details).length)
-  const hasProjects = projects.some((p) => hasText(p.name) || lines(p.bullets).length)
-
-  const experience = <Section title="Experience" show={hasJobs}><ExperienceList jobs={jobs} /></Section>
-  const education = <Section title="Education" show={hasSchools}><EducationList schools={schools} /></Section>
-  const projectBlock = <Section title="Projects" show={hasProjects}><ProjectList projects={projects} showStack={templateId === 'campus'} /></Section>
-  const skillsTitle = templateId === 'classic' || templateId === 'header-band' ? 'Technical Skills' : 'Skills'
-  const skills = <Section title={skillsTitle} show={hasText(data.skills)}><p className="rs-line">{data.skills}</p></Section>
-  const languages = <Section title="Languages" show={hasText(data.languages)}><p className="rs-line">{data.languages}</p></Section>
-  const certs = <Section title="Certifications" show={hasText(data.certifications)}><p className="rs-line">{data.certifications}</p></Section>
-  const highlightBlock = <Section title="Highlights" show={highlights.length > 0}><BulletList items={highlights} /></Section>
-  const achievementBlock = <Section title="Achievements" show={achievements.length > 0}><BulletList items={achievements} /></Section>
-  const summary = (
-    <Section title={templateId === 'centered' ? 'Professional Summary' : 'Summary'} show={hasText(data.summary)}>
-      <p className="rs-sum">{data.summary}</p>
-    </Section>
-  )
-
-  if (templateId === 'combination') {
-    return <>{skills}{highlightBlock}{experience}{education}{projectBlock}{languages}</>
-  }
-  if (templateId === 'campus') {
-    return <>{education}{projectBlock}{experience}{skills}{achievementBlock}{languages}</>
-  }
-  return <>{summary}{highlightBlock}{experience}{education}{projectBlock}{skills}{certs}{achievementBlock}{languages}</>
-}
-
-export default function ResumeDocument({ data, templateId = 'classic' }) {
-  const id = templateId || 'classic'
-
-  if (id === 'header-band') {
+const SECTIONS = {
+  summary: (p) => {
+    if (!has(p.summary)) return null
+    const ls = p.summary.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+    return <><Heading>Summary</Heading>{ls.map((l, i) => <p key={i} className="rs-p rs-sumline">{l}</p>)}</>
+  },
+  highlights: (p) => {
+    const v = strings(p.highlights)
+    return v.length ? <><Heading>Highlights</Heading><Bullets items={v} /></> : null
+  },
+  experience: (p) => {
+    const e = (p.experience || []).filter((x) => x && (has(x.title) || has(x.company) || has(x.description)))
+    if (!e.length) return null
     return (
-      <article className="resume-sheet rs-header-band rs-band-wrap">
-        <Header data={data} extraClass="rs-band" />
-        <div className="rs-band-inner">
-          <Sections data={data} templateId={id} />
-        </div>
-      </article>
+      <><Heading>Experience</Heading>
+        {e.map((x, i) => (
+          <div key={i} className="rs-entry">
+            <TitleLine title={has(x.title) ? x.title : x.company} dates={x.dates} first={i === 0} />
+            {has(x.title) && has(x.company) && <p className="rs-p rs-i">{clean(x.company)}</p>}
+            <Bullets items={bullets(x.description)} />
+          </div>
+        ))}
+      </>
     )
-  }
+  },
+  education: (p) => {
+    const e = (p.education || []).filter((x) => x && (has(x.institution) || has(x.degree)))
+    if (!e.length) return null
+    return (
+      <><Heading>Education</Heading>
+        {e.map((x, i) => {
+          const degreeLine = has(x.institution) && has(x.degree)
+          return (
+            <div key={i} className="rs-entry">
+              <TitleLine title={has(x.institution) ? x.institution : x.degree} dates={x.dates} first={i === 0} />
+              {(degreeLine || has(x.location)) && (
+                <div className="rs-title rs-i">
+                  <span>{degreeLine ? clean(x.degree) : ''}</span>
+                  {has(x.location) && <span>{clean(x.location)}</span>}
+                </div>
+              )}
+              <Bullets items={bullets(x.details)} />
+            </div>
+          )
+        })}
+      </>
+    )
+  },
+  projects: (p) => {
+    const e = (p.projects || []).filter((x) => x && (has(x.name) || has(x.description)))
+    if (!e.length) return null
+    return (
+      <><Heading>Projects</Heading>
+        {e.map((x, i) => (
+          <div key={i} className="rs-entry">
+            {has(x.name) && <p className={`rs-p rs-b${i === 0 ? ' rs-first' : ''}`}>{clean(x.name)}</p>}
+            <Bullets items={bullets(x.description)} />
+          </div>
+        ))}
+      </>
+    )
+  },
+  skills: (p) => {
+    const v = strings(p.skills)
+    return v.length ? <><Heading>Skills</Heading><p className="rs-p">{v.join(', ')}</p></> : null
+  },
+  certifications: (p) => {
+    const v = strings(p.certifications)
+    return v.length ? <><Heading>Certifications</Heading><Bullets items={v} /></> : null
+  },
+  achievements: (p) => {
+    const v = strings(p.achievements)
+    return v.length ? <><Heading>Achievements</Heading><Bullets items={v} /></> : null
+  },
+  languages: (p) => {
+    const v = strings(p.languages)
+    return v.length ? <><Heading>Languages</Heading><p className="rs-p">{v.join(', ')}</p></> : null
+  },
+}
 
-  const cls = id === 'combination' ? 'rs-combo' : id === 'campus' ? 'rs-campus' : id === 'centered' ? 'rs-centered' : ''
+// email · phone · location · linkedin · github, blanks skipped (ResumeDocxExporter.contactLine)
+const contactLine = (p) => [p.email, p.phone, p.location, p.linkedin, p.github].filter(has).map((s) => s.trim()).join('  ·  ')
+
+function Header({ p, style }) {
+  const contact = contactLine(p)
+  const name = clean(p.name) || 'Your name'
+  const inner = (
+    <>
+      <p className="rs-name">{name}</p>
+      {has(p.headline) && <p className="rs-headline">{clean(p.headline)}</p>}
+      {contact && <p className="rs-p rs-contact">{contact}</p>}
+    </>
+  )
+  if (style === 'band') return <header className="rs-band">{inner}</header>
+  return <header className={style === 'center' ? 'rs-center' : undefined}>{inner}</header>
+}
+
+export default function ResumeDocument({ payload }) {
+  const id = ORDER[payload.templateId] ? payload.templateId : 'classic'
+  const style = id === 'header-band' ? 'band' : id === 'centered' ? 'center' : 'left'
   return (
-    <article className={`resume-sheet ${cls}`.trim()}>
-      <Header data={data} center={id === 'centered'} extraClass={id === 'centered' ? 'rs-head' : undefined} />
-      {id === 'campus' && <div className="rs-accent" />}
-      <Sections data={data} templateId={id} />
+    <article className={`resume-sheet${id === 'centered' ? ' rs-serif' : ''}`}>
+      <Header p={payload} style={style} />
+      {ORDER[id].map((key) => {
+        const node = SECTIONS[key](payload)
+        return node ? <section key={key}>{node}</section> : null
+      })}
     </article>
   )
 }

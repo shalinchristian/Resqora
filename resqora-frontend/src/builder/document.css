@@ -1,120 +1,54 @@
-/* Locked type scale: 24pt name, 12pt small-caps headings, 11pt body.
-   Sizes are in px at 96dpi so they match an A4 sheet (794 x 1123). */
+/* Mirrors the DOCX/PDF exporters. 1pt = 4/3 px at 96dpi; A4 = 794 x 1123 px; 0.5in margins = 48px.
+   24pt name, 12pt headline, 12pt bold small-caps headings with a rule (10pt before, 6pt after),
+   11pt body, 2pt before the first bullet, 3pt between bullets, 8pt between entries. */
 .resume-sheet {
   width: 794px;
   min-height: 1123px;
   background: #fff;
-  color: #111;
-  padding: 48px 50px 44px;
+  color: #000;
+  padding: 48px;
   box-sizing: border-box;
-  font-family: Inter, system-ui, sans-serif;
+  font-family: Carlito, Calibri, sans-serif;
+  font-size: 14.667px; /* 11pt */
+  line-height: 1.22;
   -webkit-font-smoothing: antialiased;
+  overflow-wrap: anywhere;
 }
-.resume-sheet * { box-sizing: border-box; }
-.rs-name {
-  font-size: 32px; /* 24pt */
-  font-weight: 700;
-  margin: 0 0 5px;
-  line-height: 1.1;
-  letter-spacing: 0.15px;
+.resume-sheet * { box-sizing: border-box; margin: 0; padding: 0; }
+.resume-sheet.rs-serif { font-family: Tinos, "Times New Roman", serif; line-height: 1.15; }
+
+.rs-name { font-size: 32px; font-weight: 700; line-height: 1.22; }
+.rs-name + .rs-headline, .rs-name + .rs-contact { margin-top: 2.667px; }
+.rs-headline { font-size: 16px; }
+.rs-headline + .rs-contact { margin-top: 2.667px; }
+.rs-center { text-align: center; }
+
+.rs-band {
+  background: #1f3a5f;
+  color: #fff;
+  margin: 0 -12px;
+  padding: 10.667px 12px 13.333px;
 }
-.rs-headline {
-  font-size: 14.67px; /* 11pt */
-  font-weight: 600;
-  margin: 0 0 4px;
-}
-.rs-contact {
-  font-size: 14.67px;
-  margin: 0 0 12px;
-  line-height: 1.35;
-}
-.rs-section {
-  font-size: 16px; /* 12pt */
+
+.rs-h {
+  font-size: 16px;
   font-weight: 700;
   font-variant: small-caps;
-  letter-spacing: 0.6px;
-  margin: 14px 0 8px; /* ~10.5pt before, 6pt after */
-  padding: 0 0 3px;
-  border-bottom: 1px solid currentColor;
-  line-height: 1.15;
+  margin: 13.333px 0 8px;
+  padding-bottom: 1.333px;
+  border-bottom: 1px solid #000;
+  line-height: 1.22;
 }
-.rs-sum, .rs-line {
-  font-size: 14.67px;
-  line-height: 1.28;
-  margin: 0;
-}
-.rs-job { margin: 0 0 11px; } /* 8pt */
-.rs-job:last-child { margin-bottom: 0; }
-.rs-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 14px;
-  align-items: baseline;
-}
-.rs-role {
-  font-size: 14.67px;
-  font-weight: 700;
-  margin: 0;
-  line-height: 1.25;
-}
-.rs-dates {
-  font-size: 14.67px;
-  white-space: nowrap;
-  font-weight: 400;
-}
-.rs-org {
-  font-size: 14.67px;
-  font-style: italic;
-  font-weight: 400;
-  margin: 1px 0 0;
-  line-height: 1.3;
-}
-.rs-stack {
-  font-size: 14.67px;
-  margin: 1px 0 0;
-  font-style: italic;
-}
-.rs-list { margin: 4px 0 0; padding-left: 18px; }
-.rs-list li {
-  font-size: 14.67px;
-  line-height: 1.28;
-  margin: 0 0 4px; /* 3pt */
-}
-.rs-list li:last-child { margin-bottom: 0; }
+.rs-p { font-size: 14.667px; }
+.rs-sumline + .rs-sumline { margin-top: 4px; }
+.rs-b { font-weight: 700; }
+.rs-i { font-style: italic; }
 
-/* Combination */
-.rs-combo { color: #15202b; }
-.rs-combo .rs-headline { color: #1c3d5a; }
-.rs-combo .rs-section { color: #1c3d5a; border-bottom-color: #1c3d5a; }
+.rs-title { display: flex; justify-content: space-between; gap: 16px; }
+.rs-dates { white-space: nowrap; flex-shrink: 0; }
+.rs-entry + .rs-entry > :first-child { margin-top: 10.667px; }
 
-/* Campus */
-.rs-campus { color: #142033; }
-.rs-campus .rs-accent {
-  height: 2.5px;
-  background: #1a5f4a;
-  margin: -2px 0 12px;
-}
-.rs-campus .rs-section { color: #1a5f4a; border-bottom-color: #1a5f4a; }
-.rs-campus .rs-stack { color: #1a5f4a; }
-
-/* Centered */
-.rs-centered .rs-head { text-align: center; }
-.rs-centered .rs-name,
-.rs-centered .rs-section {
-  font-family: "IBM Plex Serif", Georgia, serif;
-}
-.rs-centered .rs-name { letter-spacing: 0.4px; }
-.rs-centered .rs-contact { margin-bottom: 10px; }
-
-/* Header-band */
-.rs-band-wrap { padding: 0; }
-.rs-band {
-  background: #1e3a5f;
-  color: #fff;
-  padding: 22px 52px 18px;
-}
-.rs-band .rs-name { color: #fff; margin-bottom: 5px; }
-.rs-band .rs-contact { color: #e8eef6; margin: 0; }
-.rs-band-inner { padding: 16px 52px 40px; }
-.rs-header-band { color: #111; }
-.rs-header-band .rs-section { color: #1e3a5f; border-bottom-color: #1e3a5f; }
+.rs-ul { list-style: none; }
+.rs-ul li { position: relative; padding-left: 16px; margin-left: 8px; margin-top: 4px; }
+.rs-ul li:first-child { margin-top: 2.667px; }
+.rs-ul li::before { content: "•"; position: absolute; left: 0; }

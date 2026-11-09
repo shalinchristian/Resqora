@@ -86,6 +86,19 @@ class SampleResumeExtractionTest {
         assertEquals(5, longResume.projects().size());
     }
 
+    // Wrapped PDF bullets: continuation lines join their own bullet, each bullet stays on its own line
+    @Test
+    void wrappedBulletsStaySeparateBullets() throws Exception {
+        ParsedResume resume = parse("06_bullets_wrapped.pdf");
+        List<String> bullets = List.of(resume.experience().get(0).description().split("\n"));
+        assertEquals(2, bullets.size(), bullets.toString());
+        assertTrue(bullets.get(0).startsWith("Designed and implemented an event-driven settlement pipeline"));
+        assertTrue(bullets.get(0).endsWith("full auditability."));
+        assertTrue(bullets.get(1).startsWith("Reduced the median API latency"));
+        assertTrue(bullets.get(1).endsWith("hottest MySQL queries."));
+        assertFalse(resume.experience().get(1).description().contains("\n"));
+    }
+
     @Test
     void messyAndCleanResumesScoreDifferently() throws Exception {
         assertNotEquals(analyzer.analyze(parse("01_baseline.pdf")).overallScore(),

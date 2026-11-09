@@ -286,4 +286,20 @@ class ResumeDocxExporterTest {
             }
         }
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"classic", "combination", "campus", "centered", "header-band"})
+    void everySectionInFrostsOrder(String templateId) throws Exception {
+        BuilderExportRequest request = new BuilderExportRequest(templateId, "Meera Joshi", null, null, null, null,
+                null, null, "Analyst.", List.of("SQL"),
+                List.of(new ExperienceEntry("Freshcart", "Data Analyst", "2024", "Built dashboards")),
+                List.of(new EducationEntry("IIT Madras", "B.Tech", "2020 – 2024", null)),
+                List.of(new ProjectEntry("Churn", "Model")), List.of("AWS"), null,
+                List.of("Cut report time by 60%"), List.of("Hackathon finalist"), List.of("English", "Hindi"));
+        String text = text(exporter.export(request));
+        List<String> headings = text.lines().map(String::toUpperCase)
+                .filter(ResumePdfExporterTest.ORDER.get("classic")::contains).toList();
+        assertEquals(ResumePdfExporterTest.ORDER.get(templateId), headings, text);
+        assertTrue(text.contains("\nEnglish, Hindi\n"), text);
+    }
 }
