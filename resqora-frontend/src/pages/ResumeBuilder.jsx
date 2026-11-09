@@ -417,8 +417,17 @@ export default function ResumeBuilder() {
 
   const paper = <Paper payload={payload} />
 
+  // On phones, a tapped field that sits under the bottom bar (or the keyboard) scrolls up into view.
+  // Once now for the bar, and again after the keyboard has finished opening.
+  const keepClearOfBar = (e) => {
+    const el = e.target
+    if (window.innerWidth >= 1024 || !el.matches('input, textarea, select')) return
+    requestAnimationFrame(() => el.scrollIntoView({ block: 'nearest' }))
+    setTimeout(() => { if (document.activeElement === el) el.scrollIntoView({ block: 'nearest' }) }, 350)
+  }
+
   return (
-    <div className={`rb max-w-6xl ${step === 'start' ? '' : 'pb-28 lg:pb-0'}`}>
+    <div className={`rb max-w-6xl ${step === 'start' ? '' : 'pb-28 lg:pb-0'}`} onFocusCapture={keepClearOfBar}>
       {step !== 'start' && <Progress step={step} />}
       {step === 'start' && <ErrorBox message={error} />}
 
