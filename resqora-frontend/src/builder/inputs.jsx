@@ -28,14 +28,16 @@ export function BulletList({ label, value, onChange, hint, placeholder = 'Add a 
   const items = rows.length ? rows : ['']
   const refs = useRef([])
   const [focusAt, setFocusAt] = useState(null)
+  const [dropped, setDropped] = useState(0)
 
   useEffect(() => {
     if (focusAt == null) return
     const el = refs.current[focusAt.i]
     if (el) {
       el.focus()
-      // keep the new row clear of the phone's bottom bar (scroll-margin in index.css adds the room)
-      el.scrollIntoView({ block: 'nearest' })
+      // keep the new row clear of the phone's bottom bar (scroll-margin in index.css adds the room).
+      // Wait a frame so freshly pasted rows have grown to their real height first.
+      requestAnimationFrame(() => el.scrollIntoView({ block: 'nearest' }))
       const pos = focusAt.end ? el.value.length : 0
       el.setSelectionRange(pos, pos)
     }
@@ -100,6 +102,7 @@ export function BulletList({ label, value, onChange, hint, placeholder = 'Add a 
     const pasted = lines.flatMap((l) => toRows(l, maxLength))
     const room = Math.max(0, max - items.length + 1)
     const kept = pasted.slice(0, room)
+    setDropped(pasted.length - kept.length)
     commit([...items.slice(0, i), ...kept, ...items.slice(i + 1)])
     setFocusAt({ i: i + kept.length - 1, end: true })
   }
@@ -136,6 +139,12 @@ export function BulletList({ label, value, onChange, hint, placeholder = 'Add a 
         </button>
       )}
       <p className="mt-1.5 ml-4 text-xs text-muted">{hint || 'Press Enter for a new one. Pasting several lines splits them up.'}</p>
+      {dropped > 0 && (
+        <p role="status" className="mt-1.5 ml-4 flex items-start gap-2 text-xs text-ink rounded-lg border border-line bg-surface px-3 py-2">
+          <span>This list fits {max} rows, so the rest of what you pasted was left off.</span>
+          <button type="button" onClick={() => setDropped(0)} aria-label="Dismiss" className="shrink-0 text-faint hover:text-ink">×</button>
+        </p>
+      )}
     </div>
   )
 }
