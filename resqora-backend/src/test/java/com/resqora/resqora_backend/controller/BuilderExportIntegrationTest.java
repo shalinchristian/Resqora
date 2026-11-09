@@ -190,6 +190,66 @@ class BuilderExportIntegrationTest {
     }
 
     @Test
+    void formatPdfReturnsPdfAttachment() throws Exception {
+        String body = VALID.replace("\"templateId\":\"combination\",", "\"templateId\":\"combination\",\"format\":\"pdf\",");
+        byte[] file = mockMvc.perform(post("/api/builder/export")
+                        .header("Authorization", token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, "application/pdf"))
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"priya-sharma-resume.pdf\""))
+                .andReturn().getResponse().getContentAsByteArray();
+        assertEquals("%PDF-", new String(file, 0, 5));
+        try (org.apache.pdfbox.pdmodel.PDDocument document = org.apache.pdfbox.Loader.loadPDF(file)) {
+            String text = new org.apache.pdfbox.text.PDFTextStripper().getText(document);
+            assertTrue(text.startsWith("Priya Sharma"), text);
+            assertTrue(text.contains("Built dashboards"), text);
+            assertTrue(text.indexOf("SKILLS") < text.indexOf("EXPERIENCE"), text);
+        }
+    }
+
+    @Test
+    void formatDocxIsTheSameAsNoFormat() throws Exception {
+        String body = VALID.replace("\"templateId\":\"combination\",", "\"templateId\":\"combination\",\"format\":\"docx\",");
+        mockMvc.perform(post("/api/builder/export")
+                        .header("Authorization", token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CONTENT_TYPE,
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"priya-sharma-resume.docx\""));
+    }
+
+    @Test
+    void unknownFormatIs400() throws Exception {
+        mockMvc.perform(post("/api/builder/export")
+                        .header("Authorization", token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"templateId\":\"classic\",\"name\":\"Joel Thomas\",\"format\":\"rtf\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(containsString("format")));
+    }
+
+    @Test
+    void pdfValidationMatchesDocx() throws Exception {
+        mockMvc.perform(post("/api/builder/export")
+                        .header("Authorization", token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"templateId\":\"modern\",\"name\":\" \",\"format\":\"pdf\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(containsString("templateId")))
+                .andExpect(jsonPath("$.message").value(containsString("name")));
+        mockMvc.perform(post("/api/builder/export")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"templateId\":\"classic\",\"name\":\"Joel Thomas\",\"format\":\"pdf\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void withoutJwtIs401() throws Exception {
         mockMvc.perform(post("/api/builder/export")
                         .contentType(MediaType.APPLICATION_JSON)
