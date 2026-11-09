@@ -191,8 +191,7 @@ export default function ResumeBuilder() {
     if (file.size > MAX_SIZE) return setError('File must be 2 MB or smaller.')
     setBusy('prefill'); setError('')
     try {
-      const uploaded = await api.uploadResume(file)
-      const parsed = await api.parsed(uploaded.id)
+      const parsed = await api.parseOnly(file)
       setDraft((d) => ({ ...fromParsed(parsed), templateId: d.templateId }))
       setStep('format')
     } catch (e) { setError(e.message) }
@@ -246,7 +245,7 @@ export default function ResumeBuilder() {
             <button type="button" disabled={busy === 'prefill'} onClick={() => fileInput.current.click()}
               className="text-left bg-surface border border-line rounded-xl p-5 hover:border-faint transition-colors disabled:opacity-60">
               <p className="font-medium">{busy === 'prefill' ? 'Reading your resume...' : 'Upload to prefill'}</p>
-              <p className="text-sm text-muted mt-1">PDF or DOCX, up to 2 MB. This also saves it under Your resumes.</p>
+              <p className="text-sm text-muted mt-1">PDF or DOCX, up to 2 MB. We only read it, so it doesn't use a resume slot.</p>
             </button>
             <button type="button" onClick={() => { setDraft(emptyDraft()); setError(''); setStep('format') }}
               className="text-left bg-surface border border-line rounded-xl p-5 hover:border-faint transition-colors">
@@ -350,7 +349,7 @@ export default function ResumeBuilder() {
             <section className="bg-surface border border-line rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
               <h2 className="text-[15px] font-semibold tracking-tight px-5 sm:px-6 pt-5">Highlights</h2>
               <div className="px-5 sm:px-6 pb-5 sm:pb-6 pt-4">
-                <Area label="Highlights" value={draft.highlights} onChange={(v) => setField('highlights', v)} hint="One per line. Short wins near the top of the page." rows={3} />
+                <Area label="Highlights" value={draft.highlights} onChange={(v) => setField('highlights', v)} hint="One per line, up to 20. Short wins near the top of the page." rows={3} />
               </div>
             </section>
 
@@ -403,7 +402,7 @@ export default function ResumeBuilder() {
               <div className="px-5 sm:px-6 pb-5 sm:pb-6 pt-4 grid gap-3.5">
                 <Area label="Certifications" value={draft.certifications} onChange={(v) => setField('certifications', v)} rows={2} />
                 <Field label="Languages" value={draft.languages} onChange={(v) => setField('languages', v)} placeholder="English, Hindi" />
-                <Area label="Achievements" value={draft.achievements} onChange={(v) => setField('achievements', v)} hint="One per line." rows={3} />
+                <Area label="Achievements" value={draft.achievements} onChange={(v) => setField('achievements', v)} hint="One per line, up to 20." rows={3} />
               </div>
             </section>
           </div>
