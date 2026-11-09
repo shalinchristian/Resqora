@@ -214,7 +214,7 @@ export default function ResumeBuilder() {
   const [restored] = useState(() => loadDraft(userId))
   const [step, setStep] = useState(() => (restored && restored.step && restored.step !== 'start' ? restored.step : 'start'))
   const [draft, setDraft] = useState(() => (restored ? restored.draft : emptyDraft()))
-  const [sec, setSec] = useState(0)
+  const [sec, setSec] = useState(() => Math.min(Math.max(restored?.section || 0, 0), SECTIONS.length - 1))
   const [open, setOpen] = useState(null) // { kind, id } while editing one job, school or project
   const [tab, setTab] = useState('edit')
   const [nameError, setNameError] = useState('')
@@ -225,7 +225,7 @@ export default function ResumeBuilder() {
   const hasSaved = !isEmptyDraft(draft)
   const template = TEMPLATES.find((t) => t.id === draft.templateId) || TEMPLATES[0]
 
-  useEffect(() => { saveDraft(step, draft, userId) }, [step, draft, userId])
+  useEffect(() => { saveDraft(step, draft, userId, sec) }, [step, draft, userId, sec])
   useEffect(() => { if (payload.name) setNameError('') }, [payload.name])
   useEffect(() => { window.scrollTo(0, 0) }, [step, sec, open, tab])
 
