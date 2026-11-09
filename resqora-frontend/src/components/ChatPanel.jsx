@@ -75,7 +75,7 @@ export default function ChatPanel({ title, placeholder, starters = [], send: sen
           )}
           <form onSubmit={(e) => { e.preventDefault(); send(input) }} className="mt-4 flex gap-2">
             <label className="sr-only" htmlFor={inputId}>Your question</label>
-            <input id={inputId} value={input} maxLength={500} onChange={(e) => setInput(e.target.value)} placeholder={placeholder}
+            <input id={inputId} name="resqora-chat-message" autoComplete="off" autoCorrect="off" data-1p-ignore data-lpignore="true" data-form-type="other" value={input} maxLength={500} onChange={(e) => setInput(e.target.value)} placeholder={placeholder}
               className="flex-1 min-w-0 rounded-lg border border-line bg-surface px-3 h-10 text-sm outline-none focus:border-accent" />
             <Button type="submit" variant="accent" className="h-10" disabled={busy || !input.trim()}>Send</Button>
           </form>
