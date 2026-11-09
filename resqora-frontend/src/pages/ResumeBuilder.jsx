@@ -146,16 +146,16 @@ export default function ResumeBuilder() {
     finally { setBusy('') }
   }
 
-  const download = async () => {
-    const payload = toPayload(draft)
+  const download = async (format) => {
+    const payload = { ...toPayload(draft), format }
     if (!payload.name) return setError('Add your name before downloading.')
-    setBusy('download'); setError('')
+    setBusy(`download-${format}`); setError('')
     try {
       const { blob, filename } = await api.exportResume(payload)
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = filename || `${fileBaseName(draft)}.docx`
+      a.download = filename || `${fileBaseName(draft)}-resume.${format}`
       document.body.appendChild(a)
       a.click()
       a.remove()
@@ -343,9 +343,13 @@ export default function ResumeBuilder() {
           <p className="text-sm text-muted mt-2 mb-7">This is how the file will look. Download it, or go back to change the details.</p>
           <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)] items-start">
             <aside className="space-y-3 lg:sticky lg:top-20">
-              <Button className="w-full" disabled={busy === 'download'} onClick={download}>
-                {busy === 'download' ? 'Preparing...' : 'Download DOCX'}
+              <Button className="w-full" disabled={busy.startsWith('download')} onClick={() => download('pdf')}>
+                {busy === 'download-pdf' ? 'Preparing...' : 'Download PDF'}
               </Button>
+              <Button className="w-full" variant="ghost" disabled={busy.startsWith('download')} onClick={() => download('docx')}>
+                {busy === 'download-docx' ? 'Preparing...' : 'Download DOCX'}
+              </Button>
+              <p className="text-xs text-muted">PDF for sending as is. DOCX if you want to edit it in Word.</p>
               <Button className="w-full" variant="ghost" onClick={() => setStep('form')}>Edit details</Button>
               <p className="text-[13px] font-semibold pt-3">Switch format</p>
               <div className="grid grid-cols-2 gap-2">
