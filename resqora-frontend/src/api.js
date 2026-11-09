@@ -108,7 +108,7 @@ export const api = {
     const starred = /filename\*=(?:UTF-8''|"?)([^";]+)/i.exec(disp)
     const plain = /filename="?([^";]+)"?/i.exec(disp)
     const match = starred || plain
-    const filename = match ? decodeURIComponent(match[1].replace(/"/g, '')) : 'resume.docx'
+    const filename = match ? decodeURIComponent(match[1].replace(/"/g, '')) : `resume.${payload.format === 'pdf' ? 'pdf' : 'docx'}`
     return { blob, filename }
   },
 }
