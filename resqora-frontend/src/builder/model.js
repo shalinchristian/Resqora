@@ -79,7 +79,7 @@ export function toRows(line, len = LIMITS.item) {
   const rows = []
   let cur = ''
   const push = () => { if (cur) rows.push(cur); cur = '' }
-  for (const sentence of text.split(/(?<=[.!?;])\s+/)) {
+  for (const sentence of text.split(/(?<=[.!?;])\s+(?=[A-Z"'(])/)) {
     const joined = cur ? `${cur} ${sentence}` : sentence
     if (joined.length <= len) { cur = joined; continue }
     push()
@@ -88,9 +88,15 @@ export function toRows(line, len = LIMITS.item) {
       const w = cur ? `${cur} ${word}` : word
       if (w.length <= len) cur = w
       else {
+        // a single run longer than a row (a long URL) is split into chunks, nothing dropped;
+        // fill the current row first so "Live at" doesn't end up alone
+        let rest = word
+        if (word.length > len && cur) {
+          const room = len - cur.length - 1
+          if (room > 0) { cur = `${cur} ${word.slice(0, room)}`; rest = word.slice(room) }
+        }
         push()
-        // a single run longer than a row (a long URL) is split into chunks, nothing dropped
-        for (let i = 0; i < word.length; i += len) { cur = word.slice(i, i + len); if (i + len < word.length) push() }
+        for (let i = 0; i < rest.length; i += len) { cur = rest.slice(i, i + len); if (i + len < rest.length) push() }
       }
     }
   }
