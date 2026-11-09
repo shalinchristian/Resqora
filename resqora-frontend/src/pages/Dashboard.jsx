@@ -99,6 +99,22 @@ const DASH_STARTERS = [
   { text: 'Which resume should I use for a backend role?' },
 ]
 
+function UsageRow({ label, u }) {
+  if (!u || u.limit == null) return null
+  const left = Math.max(0, u.remainingToday ?? 0)
+  return (
+    <div>
+      <div className="flex items-baseline justify-between">
+        <p className="text-sm text-muted">{label}</p>
+        <p className="text-sm tabular-nums"><span className="font-semibold">{left}</span> <span className="text-muted">of {u.limit} left</span></p>
+      </div>
+      <div className="h-1.5 bg-sunken rounded-full mt-2 overflow-hidden">
+        <div className="h-full bg-faint rounded-full" style={{ width: `${u.limit ? Math.min(1, left / u.limit) * 100 : 0}%` }} />
+      </div>
+    </div>
+  )
+}
+
 // AI switch plus today's chat allowance. When AI is off, nothing is sent to an AI service.
 function AiCard({ usage }) {
   const { user, setUser } = useAuth()
@@ -127,14 +143,10 @@ function AiCard({ usage }) {
       </div>
       {error && <p className="text-xs text-bad mt-2">{error}</p>}
       {aiOn && usage && (
-        <div className="mt-4 pt-4 border-t border-line">
-          <div className="flex items-baseline justify-between">
-            <p className="text-sm text-muted">AI chats today</p>
-            <p className="text-sm tabular-nums"><span className="font-semibold">{usage.remainingToday}</span> <span className="text-muted">of {usage.limit} left</span></p>
-          </div>
-          <div className="h-1.5 bg-sunken rounded-full mt-3 overflow-hidden">
-            <div className="h-full bg-faint rounded-full" style={{ width: `${Math.max(0, Math.min(1, usage.remainingToday / usage.limit)) * 100}%` }} />
-          </div>
+        <div className="mt-4 pt-4 border-t border-line space-y-3.5">
+          <p className="text-xs text-muted">Chats today. Each has its own limit and resets daily.</p>
+          <UsageRow label="Dashboard chat" u={usage.dashboardChat} />
+          <UsageRow label="Resume chat" u={usage.resumeChat} />
         </div>
       )}
       {!aiOn && <p className="text-xs text-muted mt-3 pt-3 border-t border-line">Your resume text is never sent to an AI service while this is off.</p>}
@@ -257,7 +269,8 @@ export default function Dashboard() {
             {best && <BestScore resume={best} />}
             <AiCard usage={usage} />
             <ChatPanel title="Ask about all your resumes" placeholder="Ask about your resumes" starters={DASH_STARTERS}
-              send={api.dashboardChat} onUsage={setUsage} showUsage={false} />
+              kind="dashboardChat" send={api.dashboardChat} showUsage={false}
+              onUsage={(u) => setUsage((prev) => prev ? { ...prev, dashboardChat: { ...(prev.dashboardChat || {}), remainingToday: u.remainingToday, limit: u.limit } } : prev)} />
           </aside>
         </div>
       )}
