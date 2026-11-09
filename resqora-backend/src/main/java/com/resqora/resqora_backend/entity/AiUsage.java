@@ -52,9 +52,10 @@ public class AiUsage {
         this.provider = provider;
     }
 
-    // CHAT = a chat message (resume or dashboard), counted in the per-user daily limit.
-    // SUMMARY = a new resume summary, not in that limit but still in the provider's app-wide cap.
-    public enum Kind { CHAT, SUMMARY }
+    // RESUME_CHAT / DASHBOARD_CHAT = one chat message, each counted in its own per-user daily limit
+    // (a dashboard message answered by Gemini is still DASHBOARD_CHAT).
+    // SUMMARY = a new resume summary, not in either chat limit but still in the provider's app-wide cap.
+    public enum Kind { RESUME_CHAT, DASHBOARD_CHAT, SUMMARY }
 
     public enum Provider { GEMINI, GROQ }
 

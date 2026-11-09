@@ -160,7 +160,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AiDailyLimitExceededException.class)
     public ResponseEntity<ErrorResponse> handleAiDailyLimit(AiDailyLimitExceededException exception) {
         ErrorResponse body = new ErrorResponse(429, HttpStatus.TOO_MANY_REQUESTS.getReasonPhrase(),
-                exception.getMessage(), AiDailyLimitExceededException.CODE);
+                exception.getMessage(), exception.getCode());
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                 .header(HttpHeaders.RETRY_AFTER, String.valueOf(exception.getRetryAfterSeconds()))
                 .body(body);

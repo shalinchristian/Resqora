@@ -68,7 +68,7 @@ class AiAppCapIntegrationTest {
         User others = userRepository.save(new User("cap-others-" + UUID.randomUUID() + "@example.com", "hash"));
         List<AiUsage> rows = new ArrayList<>();
         for (long i = usedByEveryone; i < CAP; i++) {
-            rows.add(new AiUsage(others, AiUsage.Kind.CHAT, AiUsage.Provider.GEMINI));
+            rows.add(new AiUsage(others, AiUsage.Kind.RESUME_CHAT, AiUsage.Provider.GEMINI));
         }
         usageRepository.saveAll(rows);
         int callsBefore = fakeAi.calls;
@@ -96,12 +96,13 @@ class AiAppCapIntegrationTest {
         Resume resume = resumeRepository.save(new Resume(user, "cv.pdf", "PDF", "Alex\nSKILLS\nJava"));
         List<AiUsage> rows = new ArrayList<>();
         for (int i = 0; i < 20; i++) {
-            rows.add(new AiUsage(user, AiUsage.Kind.CHAT, AiUsage.Provider.GEMINI));
+            rows.add(new AiUsage(user, AiUsage.Kind.RESUME_CHAT, AiUsage.Provider.GEMINI));
         }
         usageRepository.saveAll(rows);
 
         ai(resume, "Bearer " + jwtService.generateToken(user), "{\"message\":\"hi\"}")
                 .andExpect(status().isTooManyRequests())
-                .andExpect(jsonPath("$.message").value("Daily AI limit reached"));
+                .andExpect(jsonPath("$.message").value(
+                        "You've used your 20 resume chat messages for today. They reset at midnight."));
     }
 }

@@ -281,7 +281,8 @@ On Windows, use `.\mvnw.cmd test`. The tests use H2 and test doubles for externa
 | `GROQ_API_KEY` | Empty | Enables the dashboard chat (falls back to Gemini without it) |
 | `GROQ_MODEL` | `openai/gpt-oss-20b` | Groq model name |
 | `RESQORA_GROQ_BASE_URL` | `https://api.groq.com/openai/v1` | Groq API base URL |
-| `RESQORA_AI_USER_DAILY_LIMIT` | `20` | Chat messages per user per day (resume and dashboard chat together) |
+| `RESQORA_AI_RESUME_CHAT_DAILY_LIMIT` | `20` | Resume chat messages per user per day |
+| `RESQORA_AI_DASHBOARD_CHAT_DAILY_LIMIT` | `20` | Dashboard chat messages per user per day (also when it falls back to Gemini) |
 | `RESQORA_AI_SUMMARY_DAILY_LIMIT` | `10` | New AI summaries per user per day |
 | `RESQORA_AI_DAILY_CAP` | `450` | Gemini calls across the app per day |
 | `RESQORA_GROQ_DAILY_CAP` | `900` | Groq calls across the app per day |

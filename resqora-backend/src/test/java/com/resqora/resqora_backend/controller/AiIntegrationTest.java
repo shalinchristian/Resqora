@@ -136,9 +136,10 @@ class AiIntegrationTest {
         assertEquals(1, fakeAi.calls);
         assertEquals("Strong Java backend skills. Add measurable results to projects.",
                 resumeRepository.findById(resume.getId()).orElseThrow().getAiSummary());
-        // a summary is not a chat message: the user still has all 20 chat messages
+        // a summary is not a chat message: the user still has all 20 + 20 chat messages
         mockMvc.perform(get("/api/ai/usage").header("Authorization", token))
-                .andExpect(jsonPath("$.remainingToday").value(20));
+                .andExpect(jsonPath("$.resumeChat.remainingToday").value(20))
+                .andExpect(jsonPath("$.dashboardChat.remainingToday").value(20));
         assertTrue(fakeAi.lastPrompt.contains("<<<RESUME"));
     }
 
@@ -230,7 +231,9 @@ class AiIntegrationTest {
                     .andExpect(jsonPath("$.remainingToday").value(20 - i));
         }
         chat(token, "{\"message\":\"q21\"}").andExpect(status().isTooManyRequests())
-                .andExpect(jsonPath("$.message").value("Daily AI limit reached"))
+                .andExpect(jsonPath("$.message").value(
+                        "You've used your 20 resume chat messages for today. They reset at midnight."))
+                .andExpect(jsonPath("$.code").value("RESUME_CHAT_LIMIT"))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
                         .exists("Retry-After"));
         assertEquals(20, fakeAi.calls);
