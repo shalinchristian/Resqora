@@ -74,7 +74,7 @@ export function fromParsed(parsed) {
   draft.contact.email = parsed.email || ''
   draft.contact.phone = parsed.phone || ''
   draft.contact.city = parsed.location || ''
-  draft.skills = (parsed.skills || []).filter(Boolean).join(' · ')
+  draft.skills = (parsed.skills || []).filter(Boolean).join('\n')
   draft.certifications = (parsed.certifications || []).filter(Boolean).join('\n')
   const jobs = (parsed.experience || []).map((e) => ({
     ...emptyJob(),

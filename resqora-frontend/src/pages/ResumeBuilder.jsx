@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { api, ApiError } from '../api.js'
 import { Button, ErrorBox, Input, TextArea } from '../components/ui.jsx'
 import ResumeDocument from '../builder/ResumeDocument.jsx'
+import { BulletList, SkillsInput } from '../builder/inputs.jsx'
 import {
   TEMPLATES, emptyDraft, fromParsed, toPayload, fileBaseName,
   addJob, addSchool, addProject, moveItem,
@@ -241,7 +242,7 @@ export default function ResumeBuilder() {
               </div>
             </div>
           )}
-          <div className="grid gap-4 sm:grid-cols-2 mt-8">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 mt-8">
             <button type="button" disabled={busy === 'prefill'} onClick={() => fileInput.current.click()}
               className="text-left bg-surface border border-line rounded-xl p-5 hover:border-faint transition-colors disabled:opacity-60">
               <p className="font-medium">{busy === 'prefill' ? 'Reading your resume...' : 'Upload to prefill'}</p>
@@ -320,7 +321,7 @@ export default function ResumeBuilder() {
           <div className="space-y-4">
             <section className="bg-surface border border-line rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
               <h2 className="text-[15px] font-semibold tracking-tight px-5 sm:px-6 pt-5">Contact</h2>
-              <div className="px-5 sm:px-6 pb-5 sm:pb-6 pt-4 grid gap-3.5 sm:grid-cols-2">
+              <div className="px-5 sm:px-6 pb-5 sm:pb-6 pt-4 grid grid-cols-1 gap-3.5 sm:grid-cols-2">
                 <Field label="Full name" required error={nameError} inputRef={nameRef} autoComplete="name" value={draft.contact.fullName} onChange={(v) => setContact('fullName', v)} />
                 <Field label="Headline" value={draft.contact.headline} onChange={(v) => setContact('headline', v)} placeholder="Frontend Engineer" />
                 <Field label="City" value={draft.contact.city} onChange={(v) => setContact('city', v)} />
@@ -334,22 +335,21 @@ export default function ResumeBuilder() {
             <section className="bg-surface border border-line rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
               <h2 className="text-[15px] font-semibold tracking-tight px-5 sm:px-6 pt-5">Summary</h2>
               <div className="px-5 sm:px-6 pb-5 sm:pb-6 pt-4">
-                <Area label="Professional summary" value={draft.summary} onChange={(v) => setField('summary', v)} />
+                <Area label="Professional summary" value={draft.summary} onChange={(v) => setField('summary', v)} rows={3} hint="Two or three sentences about you." />
               </div>
             </section>
 
             <section className="bg-surface border border-line rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
               <h2 className="text-[15px] font-semibold tracking-tight px-5 sm:px-6 pt-5">Skills</h2>
               <div className="px-5 sm:px-6 pb-5 sm:pb-6 pt-4">
-                <Area label="Skills" value={draft.skills} onChange={(v) => setField('skills', v)} rows={3}
-                  hint="One per line, or separate with ·. Commas stay inside a skill, like AWS (EC2, S3)." />
+                <SkillsInput value={draft.skills} onChange={(v) => setField('skills', v)} />
               </div>
             </section>
 
             <section className="bg-surface border border-line rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
               <h2 className="text-[15px] font-semibold tracking-tight px-5 sm:px-6 pt-5">Highlights</h2>
               <div className="px-5 sm:px-6 pb-5 sm:pb-6 pt-4">
-                <Area label="Highlights" value={draft.highlights} onChange={(v) => setField('highlights', v)} hint="One per line, up to 20. Short wins near the top of the page." rows={3} />
+                <BulletList label="Highlights" value={draft.highlights} onChange={(v) => setField('highlights', v)} placeholder="Cut report time from 6 hours to 30 minutes" addLabel="Add highlight" hint="Short wins that show near the top. Up to 20." />
               </div>
             </section>
 
@@ -358,12 +358,12 @@ export default function ResumeBuilder() {
               onRemove={(i) => setDraft((d) => ({ ...d, experience: d.experience.length > 1 ? d.experience.filter((_, j) => j !== i) : d.experience }))}
               onAdd={() => setDraft(addJob)} addLabel="+ Add another job">
               {(job, i) => (
-                <div className="grid gap-3.5 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
                   <Field label="Title" value={job.title} onChange={(v) => setDraft((d) => ({ ...d, experience: d.experience.map((x, j) => j === i ? { ...x, title: v } : x) }))} />
                   <Field label="Company" value={job.company} onChange={(v) => setDraft((d) => ({ ...d, experience: d.experience.map((x, j) => j === i ? { ...x, company: v } : x) }))} />
                   <Field label="Location" value={job.location} onChange={(v) => setDraft((d) => ({ ...d, experience: d.experience.map((x, j) => j === i ? { ...x, location: v } : x) }))} />
                   <Field label="Dates" value={job.dates} onChange={(v) => setDraft((d) => ({ ...d, experience: d.experience.map((x, j) => j === i ? { ...x, dates: v } : x) }))} placeholder="Jul 2024 – Present" />
-                  <Area label="Bullets" value={job.bullets} onChange={(v) => setDraft((d) => ({ ...d, experience: d.experience.map((x, j) => j === i ? { ...x, bullets: v } : x) }))} hint="One bullet per line." />
+                  <BulletList label="What you did" value={job.bullets} onChange={(v) => setDraft((d) => ({ ...d, experience: d.experience.map((x, j) => j === i ? { ...x, bullets: v } : x) }))} placeholder="Built a dashboard used by 40+ managers" />
                 </div>
               )}
             </CardList>
@@ -373,12 +373,12 @@ export default function ResumeBuilder() {
               onRemove={(i) => setDraft((d) => ({ ...d, education: d.education.length > 1 ? d.education.filter((_, j) => j !== i) : d.education }))}
               onAdd={() => setDraft(addSchool)} addLabel="+ Add another school">
               {(school, i) => (
-                <div className="grid gap-3.5 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
                   <Field label="Degree" value={school.degree} onChange={(v) => setDraft((d) => ({ ...d, education: d.education.map((x, j) => j === i ? { ...x, degree: v } : x) }))} />
                   <Field label="School" value={school.school} onChange={(v) => setDraft((d) => ({ ...d, education: d.education.map((x, j) => j === i ? { ...x, school: v } : x) }))} />
                   <Field label="Dates" value={school.dates} onChange={(v) => setDraft((d) => ({ ...d, education: d.education.map((x, j) => j === i ? { ...x, dates: v } : x) }))} />
                   <Field label="CGPA" value={school.gpa} onChange={(v) => setDraft((d) => ({ ...d, education: d.education.map((x, j) => j === i ? { ...x, gpa: v } : x) }))} />
-                  <Area label="Details" value={school.details} onChange={(v) => setDraft((d) => ({ ...d, education: d.education.map((x, j) => j === i ? { ...x, details: v } : x) }))} hint="One point per line, such as coursework." rows={2} />
+                  <BulletList label="Details" value={school.details} onChange={(v) => setDraft((d) => ({ ...d, education: d.education.map((x, j) => j === i ? { ...x, details: v } : x) }))} placeholder="Relevant coursework, awards" addLabel="Add detail" hint="Optional, like coursework or awards." />
                 </div>
               )}
             </CardList>
@@ -388,21 +388,21 @@ export default function ResumeBuilder() {
               onRemove={(i) => setDraft((d) => ({ ...d, projects: d.projects.length > 1 ? d.projects.filter((_, j) => j !== i) : d.projects }))}
               onAdd={() => setDraft(addProject)} addLabel="+ Add another project">
               {(project, i) => (
-                <div className="grid gap-3.5 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
                   <Field label="Name" value={project.name} onChange={(v) => setDraft((d) => ({ ...d, projects: d.projects.map((x, j) => j === i ? { ...x, name: v } : x) }))} />
                   <Field label="Dates" value={project.dates} onChange={(v) => setDraft((d) => ({ ...d, projects: d.projects.map((x, j) => j === i ? { ...x, dates: v } : x) }))} />
                   <Field label="Stack" value={project.stack} onChange={(v) => setDraft((d) => ({ ...d, projects: d.projects.map((x, j) => j === i ? { ...x, stack: v } : x) }))} placeholder="Java · MySQL" />
-                  <Area label="Bullets" value={project.bullets} onChange={(v) => setDraft((d) => ({ ...d, projects: d.projects.map((x, j) => j === i ? { ...x, bullets: v } : x) }))} hint="One bullet per line." rows={3} />
+                  <BulletList label="What it does" value={project.bullets} onChange={(v) => setDraft((d) => ({ ...d, projects: d.projects.map((x, j) => j === i ? { ...x, bullets: v } : x) }))} placeholder="Predicted churn with 84% accuracy" />
                 </div>
               )}
             </CardList>
 
             <section className="bg-surface border border-line rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
               <h2 className="text-[15px] font-semibold tracking-tight px-5 sm:px-6 pt-5">More</h2>
-              <div className="px-5 sm:px-6 pb-5 sm:pb-6 pt-4 grid gap-3.5">
-                <Area label="Certifications" value={draft.certifications} onChange={(v) => setField('certifications', v)} rows={2} />
+              <div className="px-5 sm:px-6 pb-5 sm:pb-6 pt-4 grid grid-cols-1 gap-3.5">
+                <BulletList label="Certifications" value={draft.certifications} onChange={(v) => setField('certifications', v)} placeholder="Google Data Analytics Certificate" addLabel="Add certification" hint="Optional." />
                 <Field label="Languages" value={draft.languages} onChange={(v) => setField('languages', v)} placeholder="English, Hindi" />
-                <Area label="Achievements" value={draft.achievements} onChange={(v) => setField('achievements', v)} hint="One per line, up to 20." rows={3} />
+                <BulletList label="Achievements" value={draft.achievements} onChange={(v) => setField('achievements', v)} placeholder="Winner, Smart India Hackathon 2025" addLabel="Add achievement" hint="Optional. Up to 20." />
               </div>
             </section>
           </div>
