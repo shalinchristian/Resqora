@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, ApiError } from '../api.js'
+import { useAuth } from '../auth.jsx'
 import { Button, ErrorBox, Input, TextArea } from '../components/ui.jsx'
 import ResumeDocument from '../builder/ResumeDocument.jsx'
 import { BulletList, SkillsInput } from '../builder/inputs.jsx'
@@ -91,23 +92,26 @@ function SheetFrame({ payload }) {
   )
 }
 
-function Field({ label, value, onChange, placeholder, required, error, inputRef, ...rest }) {
+function Field({ label, value, onChange, placeholder, required, error, inputRef, maxLength = 200, ...rest }) {
   return (
     <div>
       <Input label={required ? <>{label} <span className="text-bad">*</span></> : label} value={value} placeholder={placeholder}
-        ref={inputRef} aria-invalid={error ? true : undefined} required={required}
+        ref={inputRef} aria-invalid={error ? true : undefined} required={required} maxLength={maxLength}
         onChange={(e) => onChange(e.target.value)} {...rest} />
       {error && <p className="mt-1 text-xs text-bad">{error}</p>}
     </div>
   )
 }
 
-function Area({ label, value, onChange, hint, rows = 4 }) {
+function Area({ label, value, onChange, hint, rows = 4, maxLength = 2000 }) {
   return (
     <label className="block sm:col-span-2">
       <span className="text-[13px] font-medium text-muted">{label}</span>
-      <TextArea className="mt-1.5" rows={rows} value={value} onChange={(e) => onChange(e.target.value)} />
-      {hint && <span className="block mt-1 text-xs text-muted">{hint}</span>}
+      <TextArea className="mt-1.5" rows={rows} value={value} maxLength={maxLength} onChange={(e) => onChange(e.target.value)} />
+      <span className="flex justify-between gap-3 mt-1 text-xs text-muted">
+        <span>{hint}</span>
+        {(value || '').length > maxLength * 0.8 && <span className="shrink-0 tabular-nums">{(value || '').length}/{maxLength}</span>}
+      </span>
     </label>
   )
 }
@@ -143,7 +147,9 @@ function CardList({ title, note, items, onMove, onRemove, onAdd, addLabel, child
 }
 
 export default function ResumeBuilder() {
-  const [restored] = useState(loadDraft)
+  const { user } = useAuth()
+  const userId = user?.id
+  const [restored] = useState(() => loadDraft(userId))
   const [step, setStep] = useState(() => (restored && restored.step && restored.step !== 'start' ? restored.step : 'start'))
   const [draft, setDraft] = useState(() => (restored ? restored.draft : emptyDraft()))
   const [tab, setTab] = useState('edit')
@@ -152,7 +158,7 @@ export default function ResumeBuilder() {
   const payload = toPayload(draft)
   const hasSaved = !isEmptyDraft(draft)
 
-  useEffect(() => { saveDraft(step, draft) }, [step, draft])
+  useEffect(() => { saveDraft(step, draft, userId) }, [step, draft, userId])
   useEffect(() => { if (payload.name) setNameError('') }, [payload.name])
   useEffect(() => { window.scrollTo(0, 0) }, [step])
 
@@ -325,10 +331,10 @@ export default function ResumeBuilder() {
                 <Field label="Full name" required error={nameError} inputRef={nameRef} autoComplete="name" value={draft.contact.fullName} onChange={(v) => setContact('fullName', v)} />
                 <Field label="Headline" value={draft.contact.headline} onChange={(v) => setContact('headline', v)} placeholder="Frontend Engineer" />
                 <Field label="City" value={draft.contact.city} onChange={(v) => setContact('city', v)} />
-                <Field label="Email" type="email" inputMode="email" autoComplete="email" value={draft.contact.email} onChange={(v) => setContact('email', v)} />
-                <Field label="Phone" type="tel" inputMode="tel" autoComplete="tel" value={draft.contact.phone} onChange={(v) => setContact('phone', v)} />
-                <Field label="LinkedIn" value={draft.contact.linkedin} onChange={(v) => setContact('linkedin', v)} />
-                <Field label="GitHub" value={draft.contact.github} onChange={(v) => setContact('github', v)} />
+                <Field label="Email" type="email" inputMode="email" autoComplete="email" maxLength={320} value={draft.contact.email} onChange={(v) => setContact('email', v)} />
+                <Field label="Phone" type="tel" inputMode="tel" autoComplete="tel" maxLength={50} value={draft.contact.phone} onChange={(v) => setContact('phone', v)} />
+                <Field label="LinkedIn" maxLength={500} value={draft.contact.linkedin} onChange={(v) => setContact('linkedin', v)} />
+                <Field label="GitHub" maxLength={500} value={draft.contact.github} onChange={(v) => setContact('github', v)} />
               </div>
             </section>
 
@@ -360,10 +366,10 @@ export default function ResumeBuilder() {
               {(job, i) => (
                 <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
                   <Field label="Title" value={job.title} onChange={(v) => setDraft((d) => ({ ...d, experience: d.experience.map((x, j) => j === i ? { ...x, title: v } : x) }))} />
-                  <Field label="Company" value={job.company} onChange={(v) => setDraft((d) => ({ ...d, experience: d.experience.map((x, j) => j === i ? { ...x, company: v } : x) }))} />
-                  <Field label="Location" value={job.location} onChange={(v) => setDraft((d) => ({ ...d, experience: d.experience.map((x, j) => j === i ? { ...x, location: v } : x) }))} />
+                  <Field label="Company" maxLength={120} value={job.company} onChange={(v) => setDraft((d) => ({ ...d, experience: d.experience.map((x, j) => j === i ? { ...x, company: v } : x) }))} />
+                  <Field label="Location" maxLength={78} value={job.location} onChange={(v) => setDraft((d) => ({ ...d, experience: d.experience.map((x, j) => j === i ? { ...x, location: v } : x) }))} />
                   <Field label="Dates" value={job.dates} onChange={(v) => setDraft((d) => ({ ...d, experience: d.experience.map((x, j) => j === i ? { ...x, dates: v } : x) }))} placeholder="Jul 2024 – Present" />
-                  <BulletList label="What you did" value={job.bullets} onChange={(v) => setDraft((d) => ({ ...d, experience: d.experience.map((x, j) => j === i ? { ...x, bullets: v } : x) }))} placeholder="Built a dashboard used by 40+ managers" />
+                  <BulletList label="What you did" value={job.bullets} onChange={(v) => setDraft((d) => ({ ...d, experience: d.experience.map((x, j) => j === i ? { ...x, bullets: v } : x) }))} placeholder="Built a dashboard used by 40+ managers" max={18} />
                 </div>
               )}
             </CardList>
@@ -376,9 +382,10 @@ export default function ResumeBuilder() {
                 <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
                   <Field label="Degree" value={school.degree} onChange={(v) => setDraft((d) => ({ ...d, education: d.education.map((x, j) => j === i ? { ...x, degree: v } : x) }))} />
                   <Field label="School" value={school.school} onChange={(v) => setDraft((d) => ({ ...d, education: d.education.map((x, j) => j === i ? { ...x, school: v } : x) }))} />
+                  <Field label="Location" value={school.location} onChange={(v) => setDraft((d) => ({ ...d, education: d.education.map((x, j) => j === i ? { ...x, location: v } : x) }))} placeholder="Ahmedabad, Gujarat" />
                   <Field label="Dates" value={school.dates} onChange={(v) => setDraft((d) => ({ ...d, education: d.education.map((x, j) => j === i ? { ...x, dates: v } : x) }))} />
-                  <Field label="CGPA" value={school.gpa} onChange={(v) => setDraft((d) => ({ ...d, education: d.education.map((x, j) => j === i ? { ...x, gpa: v } : x) }))} />
-                  <BulletList label="Details" value={school.details} onChange={(v) => setDraft((d) => ({ ...d, education: d.education.map((x, j) => j === i ? { ...x, details: v } : x) }))} placeholder="Relevant coursework, awards" addLabel="Add detail" hint="Optional, like coursework or awards." />
+                  <Field label="CGPA" maxLength={20} value={school.gpa} onChange={(v) => setDraft((d) => ({ ...d, education: d.education.map((x, j) => j === i ? { ...x, gpa: v } : x) }))} />
+                  <BulletList label="Details" value={school.details} onChange={(v) => setDraft((d) => ({ ...d, education: d.education.map((x, j) => j === i ? { ...x, details: v } : x) }))} placeholder="Relevant coursework, awards" addLabel="Add detail" max={18} hint="Optional, like coursework or awards." />
                 </div>
               )}
             </CardList>
@@ -389,10 +396,10 @@ export default function ResumeBuilder() {
               onAdd={() => setDraft(addProject)} addLabel="+ Add another project">
               {(project, i) => (
                 <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-                  <Field label="Name" value={project.name} onChange={(v) => setDraft((d) => ({ ...d, projects: d.projects.map((x, j) => j === i ? { ...x, name: v } : x) }))} />
-                  <Field label="Dates" value={project.dates} onChange={(v) => setDraft((d) => ({ ...d, projects: d.projects.map((x, j) => j === i ? { ...x, dates: v } : x) }))} />
+                  <Field label="Name" maxLength={120} value={project.name} onChange={(v) => setDraft((d) => ({ ...d, projects: d.projects.map((x, j) => j === i ? { ...x, name: v } : x) }))} />
+                  <Field label="Dates" maxLength={70} value={project.dates} onChange={(v) => setDraft((d) => ({ ...d, projects: d.projects.map((x, j) => j === i ? { ...x, dates: v } : x) }))} />
                   <Field label="Stack" value={project.stack} onChange={(v) => setDraft((d) => ({ ...d, projects: d.projects.map((x, j) => j === i ? { ...x, stack: v } : x) }))} placeholder="Java · MySQL" />
-                  <BulletList label="What it does" value={project.bullets} onChange={(v) => setDraft((d) => ({ ...d, projects: d.projects.map((x, j) => j === i ? { ...x, bullets: v } : x) }))} placeholder="Predicted churn with 84% accuracy" />
+                  <BulletList label="What it does" value={project.bullets} onChange={(v) => setDraft((d) => ({ ...d, projects: d.projects.map((x, j) => j === i ? { ...x, bullets: v } : x) }))} placeholder="Predicted churn with 84% accuracy" max={18} />
                 </div>
               )}
             </CardList>

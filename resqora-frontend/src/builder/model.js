@@ -23,7 +23,7 @@ const uid = () => `item-${nextId++}`
 export const lines = (text) => (text || '').split(/\r?\n/).map((s) => s.replace(/^[•\-\u2013\u2014]\s*/, '').trim()).filter(Boolean)
 
 const emptyJob = () => ({ id: uid(), title: '', company: '', location: '', dates: '', bullets: '' })
-const emptySchool = () => ({ id: uid(), degree: '', school: '', dates: '', gpa: '', details: '' })
+const emptySchool = () => ({ id: uid(), degree: '', school: '', location: '', dates: '', gpa: '', details: '' })
 const emptyProject = () => ({ id: uid(), name: '', dates: '', stack: '', bullets: '' })
 
 export function emptyDraft() {
@@ -88,6 +88,7 @@ export function fromParsed(parsed) {
     ...emptySchool(),
     degree: e.degree || '',
     school: e.institution || '',
+    location: e.location || '',
     dates: e.dates || '',
     details: e.details || '',
   }))
@@ -130,7 +131,7 @@ export function toPayload(draft) {
       degree: (e.degree || '').trim(),
       dates: (e.dates || '').trim(),
       details: [e.gpa ? `CGPA ${e.gpa.trim()}` : '', ...lines(e.details)].filter(Boolean).join('\n'),
-      location: '',
+      location: (e.location || '').trim(),
     })).filter(filled),
     projects: (draft.projects || []).map((p) => {
       const name = (p.name || '').trim()
@@ -153,14 +154,18 @@ export function splitList(text, commas = false) {
 }
 
 // Draft autosave, so a refresh or an expired session doesn't wipe the form.
+// The draft is tagged with the signed-in user's id and only restored for that same user,
+// so someone else logging in on the same browser never sees it.
 const DRAFT_KEY = 'resqora_builder_draft'
-export function saveDraft(step, draft) {
-  try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ step, draft, savedAt: Date.now() })) } catch { /* storage full or blocked */ }
+export function saveDraft(step, draft, userId) {
+  if (userId == null) return
+  try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ userId, step, draft, savedAt: Date.now() })) } catch { /* storage full or blocked */ }
 }
-export function loadDraft() {
+export function loadDraft(userId) {
   try {
     const saved = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null')
     if (!saved || !saved.draft || !saved.draft.contact) return null
+    if (userId == null || saved.userId !== userId) { clearDraft(); return null }
     const base = emptyDraft()
     const d = { ...base, ...saved.draft, contact: { ...base.contact, ...saved.draft.contact } }
     // give restored rows fresh ids so new rows never collide with them
