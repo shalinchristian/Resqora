@@ -1,7 +1,7 @@
 // Builder inputs: bullet rows for multi-line lists, and a skills field with local suggestions.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { suggestSkills } from './skills.js'
-import { splitList } from './model.js'
+import { splitList, toRows } from './model.js'
 
 const strip = (l) => l.replace(/^\s*[•\-*–·▪●]\s*/, '')
 
@@ -28,12 +28,16 @@ export function BulletList({ label, value, onChange, hint, placeholder = 'Add a 
   const items = rows.length ? rows : ['']
   const refs = useRef([])
   const [focusAt, setFocusAt] = useState(null)
+  const [dropped, setDropped] = useState(0)
 
   useEffect(() => {
     if (focusAt == null) return
     const el = refs.current[focusAt.i]
     if (el) {
       el.focus()
+      // keep the new row clear of the phone's bottom bar (scroll-margin in index.css adds the room).
+      // Wait a frame so freshly pasted rows have grown to their real height first.
+      requestAnimationFrame(() => el.scrollIntoView({ block: 'nearest' }))
       const pos = focusAt.end ? el.value.length : 0
       el.setSelectionRange(pos, pos)
     }
@@ -81,27 +85,26 @@ export function BulletList({ label, value, onChange, hint, placeholder = 'Add a 
     }
   }
 
+  // Pasting several lines makes one row per line, and a line longer than a row is split at
+  // sentence breaks (the same way prefill does), so nothing past the limit is lost.
   const onPaste = (i) => (e) => {
     const text = e.clipboardData.getData('text')
-    if (!/\r?\n/.test(text)) return
-    e.preventDefault()
-    const pasted = text.split(/\r?\n/).map((l) => strip(l).trim()).filter(Boolean)
-    if (!pasted.length) return
     const el = e.currentTarget
     const before = el.value.slice(0, el.selectionStart)
     const after = el.value.slice(el.selectionEnd)
-    const cut = (str) => str.slice(0, maxLength)
-    const first = cut(before + pasted[0])
-    const rest = pasted.slice(1)
-    if (rest.length) rest[rest.length - 1] += after
-    else return setRow(i, cut(before + pasted[0] + after))
-    for (let k = 0; k < rest.length; k++) rest[k] = cut(rest[k])
-    const next = [...items]
-    next[i] = first
-    const room = Math.max(0, max - items.length)
-    next.splice(i + 1, 0, ...rest.slice(0, room))
-    commit(next)
-    setFocusAt({ i: i + Math.min(rest.length, room), end: true })
+    const multi = /\r?\n/.test(text)
+    if (!multi && (before + text + after).length <= maxLength) return
+    e.preventDefault()
+    const lines = text.split(/\r?\n/).map((l) => strip(l).trim()).filter(Boolean)
+    if (!lines.length) return
+    lines[0] = before + lines[0]
+    lines[lines.length - 1] += after
+    const pasted = lines.flatMap((l) => toRows(l, maxLength))
+    const room = Math.max(0, max - items.length + 1)
+    const kept = pasted.slice(0, room)
+    setDropped(pasted.length - kept.length)
+    commit([...items.slice(0, i), ...kept, ...items.slice(i + 1)])
+    setFocusAt({ i: i + kept.length - 1, end: true })
   }
 
   return (
@@ -136,6 +139,12 @@ export function BulletList({ label, value, onChange, hint, placeholder = 'Add a 
         </button>
       )}
       <p className="mt-1.5 ml-4 text-xs text-muted">{hint || 'Press Enter for a new one. Pasting several lines splits them up.'}</p>
+      {dropped > 0 && (
+        <p role="status" className="mt-1.5 ml-4 flex items-start gap-2 text-xs text-ink rounded-lg border border-line bg-surface px-3 py-2">
+          <span>This list fits {max} rows, so the rest of what you pasted was left off.</span>
+          <button type="button" onClick={() => setDropped(0)} aria-label="Dismiss" className="shrink-0 text-faint hover:text-ink">×</button>
+        </p>
+      )}
     </div>
   )
 }
