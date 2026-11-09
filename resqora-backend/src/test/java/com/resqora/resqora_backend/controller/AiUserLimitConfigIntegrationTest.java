@@ -15,8 +15,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// resqora.ai.daily-limit is set from RESQORA_AI_USER_DAILY_LIMIT in application.properties
-@SpringBootTest(properties = {"resqora.ai.daily-limit=3", "resqora.timezone=UTC"})
+// set from RESQORA_AI_RESUME_CHAT_DAILY_LIMIT / RESQORA_AI_DASHBOARD_CHAT_DAILY_LIMIT in application.properties;
+// the old shared resqora.ai.daily-limit is ignored
+@SpringBootTest(properties = {"resqora.ai.resume-chat-daily-limit=3", "resqora.ai.dashboard-chat-daily-limit=5",
+        "resqora.ai.daily-limit=1", "resqora.timezone=UTC"})
 @AutoConfigureMockMvc
 class AiUserLimitConfigIntegrationTest {
     @Autowired private MockMvc mockMvc;
@@ -28,7 +30,10 @@ class AiUserLimitConfigIntegrationTest {
         User user = userRepository.save(new User("limit-" + UUID.randomUUID() + "@example.com", "hash"));
         mockMvc.perform(get("/api/ai/usage").header("Authorization", "Bearer " + jwtService.generateToken(user)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.limit").value(3))
-                .andExpect(jsonPath("$.remainingToday").value(3));
+                .andExpect(jsonPath("$.resumeChat.limit").value(3))
+                .andExpect(jsonPath("$.resumeChat.remainingToday").value(3))
+                .andExpect(jsonPath("$.dashboardChat.limit").value(5))
+                .andExpect(jsonPath("$.dashboardChat.remainingToday").value(5))
+                .andExpect(jsonPath("$.limit").value(8));
     }
 }

@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-// Runs every real Flyway migration (V1..V12) on an empty H2 database in PostgreSQL mode
+// Runs every real Flyway migration (V1..V13) on an empty H2 database in PostgreSQL mode
 class FlywayMigrationsH2Test {
     @Test
     void allMigrationsRunWithSafeDefaults() throws Exception {
@@ -24,8 +24,8 @@ class FlywayMigrationsH2Test {
         Flyway flyway = Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load();
 
         int applied = flyway.migrate().migrationsExecuted;
-        assertTrue(applied >= 12, "migrations run: " + applied);
-        assertEquals("12", flyway.info().current().getVersion().getVersion());
+        assertTrue(applied >= 13, "migrations run: " + applied);
+        assertEquals("13", flyway.info().current().getVersion().getVersion());
 
         try (Connection connection = dataSource.getConnection(); Statement sql = connection.createStatement()) {
             sql.execute("INSERT INTO users (email, password_hash, name) VALUES ('a@example.com', 'hash', 'A')");
@@ -36,7 +36,7 @@ class FlywayMigrationsH2Test {
             sql.execute("INSERT INTO ai_usage (user_id, created_at) SELECT id, CURRENT_TIMESTAMP FROM users");
             try (ResultSet row = sql.executeQuery("SELECT kind, provider FROM ai_usage")) {
                 assertTrue(row.next());
-                assertEquals("CHAT", row.getString(1)); // older rows count as Gemini chat
+                assertEquals("RESUME_CHAT", row.getString(1)); // a row without a kind counts as resume chat
                 assertEquals("GEMINI", row.getString(2));
             }
             try (ResultSet column = sql.executeQuery("SELECT column_default FROM information_schema.columns "
@@ -58,6 +58,32 @@ class FlywayMigrationsH2Test {
             sql.execute("INSERT INTO users (email, password_hash, active_email) VALUES ('d@example.com', 'x', 'd@example.com')");
             assertThrows(java.sql.SQLException.class, () -> sql.execute(
                     "INSERT INTO users (email, password_hash, active_email) VALUES ('d2@example.com', 'x', 'd@example.com')"));
+        }
+    }
+
+    // V13 splits old shared CHAT rows into the two chat buckets and leaves summaries alone
+    @Test
+    void v13ClassifiesExistingChatRows() throws Exception {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:flyway-v13;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1");
+        dataSource.setUser("sa");
+        Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").target("12").load().migrate();
+        try (Connection connection = dataSource.getConnection(); Statement sql = connection.createStatement()) {
+            sql.execute("INSERT INTO users (email, password_hash, name) VALUES ('a@example.com', 'hash', 'A')");
+            for (String row : new String[] {"'CHAT', 'GEMINI'", "'CHAT', 'GROQ'", "'SUMMARY', 'GEMINI'"}) {
+                sql.execute("INSERT INTO ai_usage (user_id, kind, provider, created_at) SELECT id, " + row
+                        + ", CURRENT_TIMESTAMP FROM users");
+            }
+        }
+        Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load().migrate();
+        try (Connection connection = dataSource.getConnection(); Statement sql = connection.createStatement();
+             ResultSet rows = sql.executeQuery("SELECT kind, provider FROM ai_usage ORDER BY id")) {
+            String[][] expected = {{"RESUME_CHAT", "GEMINI"}, {"DASHBOARD_CHAT", "GROQ"}, {"SUMMARY", "GEMINI"}};
+            for (String[] row : expected) {
+                assertTrue(rows.next());
+                assertEquals(row[0], rows.getString(1));
+                assertEquals(row[1], rows.getString(2));
+            }
         }
     }
 }
