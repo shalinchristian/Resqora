@@ -73,6 +73,11 @@ public class ResumeDocxExporter {
 
     // "Aaron D'Souza" -> "aaron-dsouza-resume.docx"
     public static String fileName(String name) {
+        return fileName(name, "docx");
+    }
+
+    // same slug for every format: "aaron-dsouza-resume.pdf"
+    public static String fileName(String name, String extension) {
         String slug = name == null ? "" : name.toLowerCase(java.util.Locale.ROOT)
                 .replaceAll("['’]", "")
                 .replaceAll("[^a-z0-9]+", "-")
@@ -80,7 +85,7 @@ public class ResumeDocxExporter {
         if (slug.length() > 60) {
             slug = slug.substring(0, 60).replaceAll("-+$", "");
         }
-        return (slug.isEmpty() ? "resume" : slug + "-resume") + ".docx";
+        return (slug.isEmpty() ? "resume" : slug + "-resume") + "." + extension;
     }
 
     // Description text -> bullets: one per line, blank lines dropped, leading bullet marks stripped
@@ -94,11 +99,19 @@ public class ResumeDocxExporter {
                 .toList();
     }
 
-    private static boolean has(String value) {
+    // email · phone · location · linkedin · github, skipping blanks; shared with the PDF writer
+    static String contactLine(BuilderExportRequest request) {
+        return String.join("  ·  ", java.util.stream.Stream.of(
+                        request.email(), request.phone(), request.location(),
+                        request.linkedin(), request.github())
+                .filter(ResumeDocxExporter::has).map(String::strip).toList());
+    }
+
+    static boolean has(String value) {
         return value != null && !value.isBlank();
     }
 
-    private static String clean(String value) {
+    static String clean(String value) {
         return value == null ? "" : value.strip();
     }
 
@@ -156,10 +169,7 @@ public class ResumeDocxExporter {
         // ---- header ----
 
         private void writeHeader(BuilderExportRequest request) {
-            String contact = String.join("  ·  ", java.util.stream.Stream.of(
-                            request.email(), request.phone(), request.location(),
-                            request.linkedin(), request.github())
-                    .filter(ResumeDocxExporter::has).map(String::strip).toList());
+            String contact = contactLine(request);
 
             if (template.headerStyle() == ResumeTemplate.HeaderStyle.BAND) {
                 XWPFParagraph band = paragraph(0, 0);
