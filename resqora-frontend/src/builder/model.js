@@ -72,42 +72,77 @@ export const LIMITS = { skills: 100, highlights: 20, certifications: 30, achieve
 const cut = (s, n = LIMITS.item) => (s || '').trim().slice(0, n)
 const capLines = (text, n, len = LIMITS.item) => lines(text).map((l) => l.slice(0, len)).slice(0, n)
 
-export function fromParsed(parsed) {
+// Break one long line into rows of at most `len`, at sentence breaks first, then at spaces.
+export function toRows(line, len = LIMITS.item) {
+  const text = (line || '').trim()
+  if (text.length <= len) return text ? [text] : []
+  const rows = []
+  let cur = ''
+  const push = () => { if (cur) rows.push(cur); cur = '' }
+  for (const sentence of text.split(/(?<=[.!?;])\s+/)) {
+    const joined = cur ? `${cur} ${sentence}` : sentence
+    if (joined.length <= len) { cur = joined; continue }
+    push()
+    if (sentence.length <= len) { cur = sentence; continue }
+    for (const word of sentence.split(/\s+/)) {
+      const w = cur ? `${cur} ${word}` : word
+      if (w.length <= len) cur = w
+      else {
+        push()
+        // a single run longer than a row (a long URL) is split into chunks, nothing dropped
+        for (let i = 0; i < word.length; i += len) { cur = word.slice(i, i + len); if (i + len < word.length) push() }
+      }
+    }
+  }
+  push()
+  return rows
+}
+
+// Prefill a draft from a parsed resume, within the export limits.
+// shortened is true when anything still had to be cut or dropped, so the form can say so.
+export function prefillDraft(parsed) {
   const draft = emptyDraft()
-  if (!parsed) return draft
-  draft.contact.fullName = cut(parsed.name)
-  draft.contact.email = cut(parsed.email, 320)
-  draft.contact.phone = cut(parsed.phone, 50)
-  draft.contact.city = cut(parsed.location)
+  if (!parsed) return { draft, shortened: false }
+  let shortened = false
+  const fit = (s, n = LIMITS.item) => { const t = (s || '').trim(); if (t.length > n) shortened = true; return t.slice(0, n) }
+  const take = (list, n) => { if (list.length > n) shortened = true; return list.slice(0, n) }
+  const bullets = (text) => take(lines(bulletsFromDescription(text)).flatMap((l) => toRows(l)), LIMITS.bullets).join('\n')
+
+  draft.contact.fullName = fit(parsed.name)
+  draft.contact.email = fit(parsed.email, 320)
+  draft.contact.phone = fit(parsed.phone, 50)
+  draft.contact.city = fit(parsed.location)
   const seen = new Set()
-  draft.skills = (parsed.skills || []).map((x) => cut(x)).filter((x) => x && !seen.has(x.toLowerCase()) && seen.add(x.toLowerCase()))
-    .slice(0, LIMITS.skills).join('\n')
-  draft.certifications = (parsed.certifications || []).map((x) => cut(x)).filter(Boolean).slice(0, LIMITS.certifications).join('\n')
-  const bullets = (text) => capLines(bulletsFromDescription(text), LIMITS.bullets).join('\n')
-  const jobs = (parsed.experience || []).slice(0, LIMITS.experience).map((e) => ({
+  draft.skills = take((parsed.skills || []).map((x) => fit(x)).filter((x) => x && !seen.has(x.toLowerCase()) && seen.add(x.toLowerCase())), LIMITS.skills).join('\n')
+  draft.certifications = take((parsed.certifications || []).filter(Boolean).flatMap((x) => toRows(x)), LIMITS.certifications).join('\n')
+  const jobs = take(parsed.experience || [], LIMITS.experience).map((e) => ({
     ...emptyJob(),
-    title: cut(e.title),
-    company: cut(e.company, 120),
-    dates: cut(e.dates),
+    title: fit(e.title),
+    company: fit(e.company, 120),
+    dates: fit(e.dates),
     bullets: bullets(e.description),
   }))
   draft.experience = jobs.length ? jobs : [emptyJob()]
-  const schools = (parsed.education || []).slice(0, LIMITS.education).map((e) => ({
+  const schools = take(parsed.education || [], LIMITS.education).map((e) => ({
     ...emptySchool(),
-    degree: cut(e.degree),
-    school: cut(e.institution),
-    location: cut(e.location),
-    dates: cut(e.dates),
+    degree: fit(e.degree),
+    school: fit(e.institution),
+    location: fit(e.location),
+    dates: fit(e.dates),
     details: bullets(e.details),
   }))
   draft.education = schools.length ? schools : [emptySchool()]
-  const projects = (parsed.projects || []).slice(0, LIMITS.projects).map((p) => ({
+  const projects = take(parsed.projects || [], LIMITS.projects).map((p) => ({
     ...emptyProject(),
-    name: cut(p.name, 120),
+    name: fit(p.name, 120),
     bullets: bullets(p.description),
   }))
   draft.projects = projects.length ? projects : [emptyProject()]
-  return draft
+  return { draft, shortened }
+}
+
+export function fromParsed(parsed) {
+  return prefillDraft(parsed).draft
 }
 
 // POST /api/builder/export — parsed-resume shape plus templateId, summary, headline, linkedin, github,
