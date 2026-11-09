@@ -33,6 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -139,6 +140,18 @@ class AiPrivacyAndDashboardChatIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON).content(body));
     }
 
+    private long chatRows() {
+        return rows(AiUsage.Kind.RESUME_CHAT) + rows(AiUsage.Kind.DASHBOARD_CHAT);
+    }
+
+    private void use(AiUsage.Kind kind, AiUsage.Provider provider, int count) {
+        List<AiUsage> used = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            used.add(new AiUsage(user, kind, provider));
+        }
+        usageRepository.saveAll(used);
+    }
+
     private long rows(AiUsage.Kind kind) {
         return usageRepository.countByUserIdAndKindAndCreatedAtGreaterThanEqual(user.getId(), kind, Instant.EPOCH);
     }
@@ -183,7 +196,7 @@ class AiPrivacyAndDashboardChatIntegrationTest {
                 .andExpect(jsonPath("$.code").value("AI_DISABLED"));
         assertEquals(0, gemini.calls);
         assertEquals(0, groq.calls);
-        assertEquals(0, rows(AiUsage.Kind.CHAT) + rows(AiUsage.Kind.SUMMARY));
+        assertEquals(0, chatRows() + rows(AiUsage.Kind.SUMMARY));
 
         // rule-based analysis has nothing to do with AI and still works
         mockMvc.perform(get("/api/resumes/" + resume.getId() + "/analysis").header("Authorization", token))
@@ -205,31 +218,90 @@ class AiPrivacyAndDashboardChatIntegrationTest {
     @Test
     void summaryDoesNotUseAChatMessageButCountsTowardTheGeminiCap() throws Exception {
         summary().andExpect(status().isOk());
-        assertEquals(0, rows(AiUsage.Kind.CHAT));
+        assertEquals(0, chatRows());
         assertEquals(1, rows(AiUsage.Kind.SUMMARY));
         mockMvc.perform(get("/api/ai/usage").header("Authorization", token))
-                .andExpect(jsonPath("$.remainingToday").value(20)).andExpect(jsonPath("$.limit").value(20));
+                .andExpect(jsonPath("$.resumeChat.remainingToday").value(20))
+                .andExpect(jsonPath("$.dashboardChat.remainingToday").value(20))
+                .andExpect(jsonPath("$.remainingToday").value(40)).andExpect(jsonPath("$.limit").value(40));
         AiUsage row = usageRepository.findAll().stream()
                 .filter(u -> u.getUser().getId().equals(user.getId())).findFirst().orElseThrow();
         assertEquals(AiUsage.Provider.GEMINI, row.getProvider());
     }
 
     @Test
-    void dashboardAndResumeChatShareTheDailyLimit() throws Exception {
-        List<AiUsage> used = new ArrayList<>();
-        for (int i = 0; i < 18; i++) {
-            used.add(new AiUsage(user, AiUsage.Kind.CHAT, AiUsage.Provider.GEMINI));
-        }
-        usageRepository.saveAll(used);
+    void resumeChatStopsAt20OnItsOwnAndDashboardChatStillWorks() throws Exception {
+        use(AiUsage.Kind.RESUME_CHAT, AiUsage.Provider.GEMINI, 18);
         resumeChat("{\"message\":\"hi\"}").andExpect(status().isOk())
                 .andExpect(jsonPath("$.remainingToday").value(1)).andExpect(jsonPath("$.limit").value(20));
+        resumeChat("{\"message\":\"hi\"}").andExpect(status().isOk())
+                .andExpect(jsonPath("$.remainingToday").value(0));
+        int calls = gemini.calls;
+        resumeChat("{\"message\":\"hi\"}").andExpect(status().isTooManyRequests())
+                .andExpect(header().exists("Retry-After"))
+                .andExpect(jsonPath("$.code").value("RESUME_CHAT_LIMIT"))
+                .andExpect(jsonPath("$.message").value(
+                        "You've used your 20 resume chat messages for today. They reset at midnight."));
+        assertEquals(calls, gemini.calls, "refused before calling the AI");
+        // the dashboard bucket is untouched
+        dashboardChat("{\"message\":\"hi\"}").andExpect(status().isOk())
+                .andExpect(jsonPath("$.remainingToday").value(19)).andExpect(jsonPath("$.limit").value(20));
+        mockMvc.perform(get("/api/ai/usage").header("Authorization", token))
+                .andExpect(jsonPath("$.resumeChat.usedToday").value(20))
+                .andExpect(jsonPath("$.resumeChat.limit").value(20))
+                .andExpect(jsonPath("$.resumeChat.remainingToday").value(0))
+                .andExpect(jsonPath("$.dashboardChat.usedToday").value(1))
+                .andExpect(jsonPath("$.dashboardChat.remainingToday").value(19))
+                .andExpect(jsonPath("$.usedToday").value(21))
+                .andExpect(jsonPath("$.limit").value(40))
+                .andExpect(jsonPath("$.remainingToday").value(19));
+    }
+
+    @Test
+    void dashboardChatStopsAt20OnItsOwnAndResumeChatStillWorks() throws Exception {
+        groq.configured = true;
+        use(AiUsage.Kind.DASHBOARD_CHAT, AiUsage.Provider.GROQ, 19);
         dashboardChat("{\"message\":\"hi\"}").andExpect(status().isOk())
                 .andExpect(jsonPath("$.remainingToday").value(0)).andExpect(jsonPath("$.limit").value(20));
         dashboardChat("{\"message\":\"hi\"}").andExpect(status().isTooManyRequests())
-                .andExpect(jsonPath("$.code").value("AI_DAILY_LIMIT"));
-        resumeChat("{\"message\":\"hi\"}").andExpect(status().isTooManyRequests());
-        mockMvc.perform(get("/api/ai/usage").header("Authorization", token))
-                .andExpect(jsonPath("$.usedToday").value(20)).andExpect(jsonPath("$.remainingToday").value(0));
+                .andExpect(header().exists("Retry-After"))
+                .andExpect(jsonPath("$.code").value("DASHBOARD_CHAT_LIMIT"))
+                .andExpect(jsonPath("$.message").value(
+                        "You've used your 20 dashboard chat messages for today. They reset at midnight."));
+        assertEquals(1, groq.calls);
+        resumeChat("{\"message\":\"hi\"}").andExpect(status().isOk())
+                .andExpect(jsonPath("$.remainingToday").value(19));
+        assertEquals(20, rows(AiUsage.Kind.DASHBOARD_CHAT));
+        assertEquals(1, rows(AiUsage.Kind.RESUME_CHAT));
+    }
+
+    @Test
+    void geminiFallbackCountsAgainstTheDashboardChat() throws Exception {
+        // no Groq key: the dashboard chat is answered by Gemini but uses a dashboard message
+        dashboardChat("{\"message\":\"hi\"}").andExpect(status().isOk())
+                .andExpect(jsonPath("$.remainingToday").value(19));
+        assertEquals(1, rows(AiUsage.Kind.DASHBOARD_CHAT));
+        assertEquals(0, rows(AiUsage.Kind.RESUME_CHAT));
+        use(AiUsage.Kind.DASHBOARD_CHAT, AiUsage.Provider.GEMINI, 19);
+        dashboardChat("{\"message\":\"hi\"}").andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.code").value("DASHBOARD_CHAT_LIMIT"));
+        resumeChat("{\"message\":\"hi\"}").andExpect(status().isOk())
+                .andExpect(jsonPath("$.remainingToday").value(19));
+    }
+
+    @Test
+    void summariesUseNeitherChatAndKeepTheirOwnLimitAndCode() throws Exception {
+        use(AiUsage.Kind.RESUME_CHAT, AiUsage.Provider.GEMINI, 20);
+        use(AiUsage.Kind.DASHBOARD_CHAT, AiUsage.Provider.GROQ, 20);
+        summary().andExpect(status().isOk());
+        assertEquals(1, rows(AiUsage.Kind.SUMMARY));
+        assertEquals(40, chatRows());
+        use(AiUsage.Kind.SUMMARY, AiUsage.Provider.GEMINI, 9);
+        resume.setAiSummary(null);
+        resumeRepository.save(resume);
+        summary().andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.code").value("AI_DAILY_LIMIT"))
+                .andExpect(jsonPath("$.message").value("Daily AI limit reached"));
     }
 
     // ---- dashboard chat ----
@@ -250,7 +322,7 @@ class AiPrivacyAndDashboardChatIntegrationTest {
         AiUsage row = usageRepository.findAll().stream()
                 .filter(u -> u.getUser().getId().equals(user.getId())).findFirst().orElseThrow();
         assertEquals(AiUsage.Provider.GROQ, row.getProvider());
-        assertEquals(AiUsage.Kind.CHAT, row.getKind());
+        assertEquals(AiUsage.Kind.DASHBOARD_CHAT, row.getKind());
     }
 
     @Test
@@ -271,7 +343,7 @@ class AiPrivacyAndDashboardChatIntegrationTest {
         groq.fail = true;
         dashboardChat("{\"message\":\"hi\"}").andExpect(status().isServiceUnavailable());
         assertEquals(0, gemini.calls);
-        assertEquals(0, rows(AiUsage.Kind.CHAT));
+        assertEquals(0, chatRows());
     }
 
     @Test

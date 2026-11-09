@@ -6,7 +6,8 @@ import { Section, Button, ErrorBox } from './ui.jsx'
 
 // Shared chat box, used for one resume and for the dashboard chat across all resumes.
 // send(text, history) must return { reply, remainingToday, limit }.
-export default function ChatPanel({ title, placeholder, starters = [], send: sendFn, beforeSend, onUsage, showUsage = true, style }) {
+// kind picks this chat's own daily allowance from GET /api/ai/usage: 'resumeChat' or 'dashboardChat'.
+export default function ChatPanel({ kind = 'resumeChat', title, placeholder, starters = [], send: sendFn, beforeSend, onUsage, showUsage = true, style }) {
   const { user } = useAuth()
   const onDashboard = useLocation().pathname === '/'
   const aiOn = user?.aiEnabled !== false
@@ -20,8 +21,11 @@ export default function ChatPanel({ title, placeholder, starters = [], send: sen
 
   // show today's allowance before the first message
   useEffect(() => {
-    if (aiOn) api.aiUsage().then((u) => setUsage({ left: u.remainingToday, limit: u.limit })).catch(() => {})
-  }, [aiOn])
+    if (aiOn) api.aiUsage().then((u) => {
+      const mine = u?.[kind] || u
+      if (mine?.remainingToday != null) setUsage({ left: mine.remainingToday, limit: mine.limit })
+    }).catch(() => {})
+  }, [aiOn, kind])
 
   useEffect(() => { end.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }) }, [messages, busy])
 
@@ -40,7 +44,8 @@ export default function ChatPanel({ title, placeholder, starters = [], send: sen
       if (r.remainingToday != null) { setUsage({ left: r.remainingToday, limit: r.limit }); onUsage?.({ remainingToday: r.remainingToday, limit: r.limit }) }
     } catch (e) {
       setMessages((m) => m.slice(0, -1)); setInput(text)
-      setError(e.status === 429 ? "You've used today's AI chats. They reset tomorrow."
+      if (e.status === 429 && usage) setUsage({ ...usage, left: 0 })
+      setError(e.status === 429 ? (e.message && !/^Request failed/.test(e.message) ? e.message : "You've used today's chats here. They reset tomorrow.")
         : e.code === 'AI_DISABLED' ? 'AI is turned off for your account.'
         : e.status === 503 ? 'AI chat is not available right now.' : e.message)
     } finally { setBusy(false) }
@@ -75,7 +80,7 @@ export default function ChatPanel({ title, placeholder, starters = [], send: sen
           )}
           <form onSubmit={(e) => { e.preventDefault(); send(input) }} className="mt-4 flex gap-2">
             <label className="sr-only" htmlFor={inputId}>Your question</label>
-            <input id={inputId} value={input} maxLength={500} onChange={(e) => setInput(e.target.value)} placeholder={placeholder}
+            <input id={inputId} name="resqora-chat-message" autoComplete="off" autoCorrect="off" data-1p-ignore data-lpignore="true" data-form-type="other" value={input} maxLength={500} onChange={(e) => setInput(e.target.value)} placeholder={placeholder}
               className="flex-1 min-w-0 rounded-lg border border-line bg-surface px-3 h-10 text-sm outline-none focus:border-accent" />
             <Button type="submit" variant="accent" className="h-10" disabled={busy || !input.trim()}>Send</Button>
           </form>

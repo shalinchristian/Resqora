@@ -69,28 +69,34 @@ class DashboardDataIntegrationTest {
         mockMvc.perform(get("/api/ai/usage").header("Authorization", token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.usedToday").value(0))
-                .andExpect(jsonPath("$.limit").value(20))
-                .andExpect(jsonPath("$.remainingToday").value(20));
+                .andExpect(jsonPath("$.limit").value(40))
+                .andExpect(jsonPath("$.remainingToday").value(40))
+                .andExpect(jsonPath("$.resumeChat.limit").value(20))
+                .andExpect(jsonPath("$.resumeChat.remainingToday").value(20))
+                .andExpect(jsonPath("$.dashboardChat.limit").value(20))
+                .andExpect(jsonPath("$.dashboardChat.remainingToday").value(20));
     }
 
     @Test
     void usageCountsOnlyOwnCallsAndNeverGoesNegative() throws Exception {
         User other = userRepository.save(new User("dash-other-" + UUID.randomUUID() + "@example.com", "hash"));
         for (int i = 0; i < 3; i++) {
-            usageRepository.save(new AiUsage(user, AiUsage.Kind.CHAT, AiUsage.Provider.GEMINI));
+            usageRepository.save(new AiUsage(user, AiUsage.Kind.RESUME_CHAT, AiUsage.Provider.GEMINI));
         }
-        usageRepository.save(new AiUsage(other, AiUsage.Kind.CHAT, AiUsage.Provider.GEMINI));
+        usageRepository.save(new AiUsage(other, AiUsage.Kind.RESUME_CHAT, AiUsage.Provider.GEMINI));
 
         mockMvc.perform(get("/api/ai/usage").header("Authorization", token))
-                .andExpect(jsonPath("$.usedToday").value(3))
-                .andExpect(jsonPath("$.remainingToday").value(17));
+                .andExpect(jsonPath("$.resumeChat.usedToday").value(3))
+                .andExpect(jsonPath("$.resumeChat.remainingToday").value(17));
 
         for (int i = 0; i < 19; i++) {
-            usageRepository.save(new AiUsage(user, AiUsage.Kind.CHAT, AiUsage.Provider.GEMINI));
+            usageRepository.save(new AiUsage(user, AiUsage.Kind.RESUME_CHAT, AiUsage.Provider.GEMINI));
         }
         mockMvc.perform(get("/api/ai/usage").header("Authorization", token))
-                .andExpect(jsonPath("$.usedToday").value(22))
-                .andExpect(jsonPath("$.remainingToday").value(0));
+                .andExpect(jsonPath("$.resumeChat.usedToday").value(22))
+                .andExpect(jsonPath("$.resumeChat.remainingToday").value(0))
+                .andExpect(jsonPath("$.dashboardChat.remainingToday").value(20))
+                .andExpect(jsonPath("$.remainingToday").value(20));
     }
 
     @Test

@@ -92,7 +92,7 @@ class Slice16IntegrationTest {
     }
 
     private void fillUsage(int rows) {
-        fillUsage(rows, AiUsage.Kind.CHAT);
+        fillUsage(rows, AiUsage.Kind.RESUME_CHAT);
     }
 
     private void fillUsage(int rows, AiUsage.Kind kind) {

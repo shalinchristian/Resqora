@@ -475,7 +475,8 @@ public class ResumeParser {
             boolean bullet = isBullet(rawLine);
             String line = cleanLine(rawLine);
             if (bullet && current != null) {
-                current = current.withDescription(append(current.description(), line));
+                // a new bullet starts its own line of the description
+                current = current.withDescription(appendLine(current.description(), line));
                 previousText = line;
             } else if (!bullet && current != null && previousText != null && isContinuation(previousText, line)) {
                 // a long bullet wrapped onto the next line: same bullet, not a new entry
@@ -484,7 +485,7 @@ public class ResumeParser {
             } else if (!bullet && current != null && isDescriptionLine(line)) {
                 // Projects and experience: a bullet whose glyph was lost (pasted text, some PDFs) is still
                 // a description of the entry above, not a new entry.
-                current = current.withDescription(append(current.description(), line));
+                current = current.withDescription(appendLine(current.description(), line));
                 previousText = line;
             } else if (!bullet && current != null && current.dates() == null
                     && DATE_PATTERN.matcher(line).matches()) {
@@ -621,8 +622,14 @@ public class ResumeParser {
         return fields.size() > index && !fields.get(index).isBlank() ? fields.get(index) : null;
     }
 
+    // wrapped continuation of the same bullet: joined with a space
     private String append(String existing, String addition) {
         return existing == null || existing.isBlank() ? addition : existing + " " + addition;
+    }
+
+    // a new bullet: one bullet per line, so the builder and the export keep them apart
+    private String appendLine(String existing, String addition) {
+        return existing == null || existing.isBlank() ? addition : existing + "\n" + addition;
     }
 
     private boolean isBullet(String line) {

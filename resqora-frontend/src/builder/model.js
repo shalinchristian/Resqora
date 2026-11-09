@@ -9,10 +9,10 @@ import headerBandThumb from '../assets/templates/header-band.png'
 
 export const TEMPLATES = [
   { id: 'classic', name: 'Classic', blurb: 'Clean single column. Good default.', thumb: classicThumb },
-  { id: 'combination', name: 'Combination', blurb: 'Skills and highlights first.', thumb: combinationThumb },
-  { id: 'campus', name: 'Campus', blurb: 'Projects first, for students.', thumb: campusThumb },
+  { id: 'combination', name: 'Combination', blurb: 'Skills, then highlights, before experience.', thumb: combinationThumb },
+  { id: 'campus', name: 'Campus', blurb: 'Education and projects first, for students.', thumb: campusThumb },
   { id: 'centered', name: 'Centered', blurb: 'Formal, with a centered name.', thumb: centeredThumb },
-  { id: 'header-band', name: 'Header-band', blurb: 'Name sits in a color bar.', thumb: headerBandThumb },
+  { id: 'header-band', name: 'Header-band', blurb: 'Name sits in a navy bar.', thumb: headerBandThumb },
 ]
 
 export const TEMPLATE_IDS = TEMPLATES.map((t) => t.id)
@@ -74,7 +74,7 @@ export function fromParsed(parsed) {
   draft.contact.email = parsed.email || ''
   draft.contact.phone = parsed.phone || ''
   draft.contact.city = parsed.location || ''
-  draft.skills = (parsed.skills || []).filter(Boolean).join(' · ')
+  draft.skills = (parsed.skills || []).filter(Boolean).join('\n')
   draft.certifications = (parsed.certifications || []).filter(Boolean).join('\n')
   const jobs = (parsed.experience || []).map((e) => ({
     ...emptyJob(),
@@ -101,7 +101,8 @@ export function fromParsed(parsed) {
   return draft
 }
 
-// POST /api/builder/export — parsed-resume shape plus templateId, summary, headline, linkedin, github.
+// POST /api/builder/export — parsed-resume shape plus templateId, summary, headline, linkedin, github,
+// highlights, achievements and languages. The live preview renders this same object.
 export function toPayload(draft) {
   const c = draft.contact || {}
   const filled = (row) => Object.values(row).some((v) => (typeof v === 'string' ? v.trim() : v))
@@ -115,7 +116,9 @@ export function toPayload(draft) {
     linkedin: (c.linkedin || '').trim(),
     github: (c.github || '').trim(),
     summary: (draft.summary || '').trim(),
-    skills: (draft.skills || '').split(/[·,\n]/).map((s) => s.trim()).filter(Boolean),
+    // split only on new lines and · so "AWS (EC2, S3, RDS)" stays one skill
+    skills: splitList(draft.skills),
+    highlights: lines(draft.highlights),
     experience: (draft.experience || []).map((j) => ({
       company: [j.company, j.location].map((s) => (s || '').trim()).filter(Boolean).join(', '),
       title: (j.title || '').trim(),
@@ -139,7 +142,39 @@ export function toPayload(draft) {
       }
     }).filter(filled),
     certifications: lines(draft.certifications),
+    achievements: lines(draft.achievements),
+    languages: splitList(draft.languages, true),
   }
+}
+
+// one item per line or per ·; languages also allow commas ("English, Hindi")
+export function splitList(text, commas = false) {
+  return (text || '').split(commas ? /[·,\r\n]/ : /[·\r\n]/).map((s) => s.trim()).filter(Boolean)
+}
+
+// Draft autosave, so a refresh or an expired session doesn't wipe the form.
+const DRAFT_KEY = 'resqora_builder_draft'
+export function saveDraft(step, draft) {
+  try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ step, draft, savedAt: Date.now() })) } catch { /* storage full or blocked */ }
+}
+export function loadDraft() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null')
+    if (!saved || !saved.draft || !saved.draft.contact) return null
+    const base = emptyDraft()
+    const d = { ...base, ...saved.draft, contact: { ...base.contact, ...saved.draft.contact } }
+    // give restored rows fresh ids so new rows never collide with them
+    for (const key of ['experience', 'education', 'projects']) {
+      d[key] = (Array.isArray(d[key]) && d[key].length ? d[key] : base[key]).map((row) => ({ ...row, id: uid() }))
+    }
+    return { step: saved.step, draft: d }
+  } catch { return null }
+}
+export function clearDraft() {
+  try { localStorage.removeItem(DRAFT_KEY) } catch { /* ignore */ }
+}
+export function isEmptyDraft(draft) {
+  return JSON.stringify(toPayload(draft)) === JSON.stringify(toPayload(emptyDraft()))
 }
 
 export function fileBaseName(draft) {

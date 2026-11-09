@@ -34,8 +34,8 @@ import java.util.List;
  * All AI features. The order of checks for every request:
  * 1. privacy: the user turned AI off -> 403 AI_DISABLED, nothing is sent to any AI;
  * 2. a provider key is configured, else 503;
- * 3. limits, checked and reserved atomically: chat messages per user per day (resume + dashboard chat
- *    share one limit), new summaries per user per day (separate safety limit), and an app-wide cap per
+ * 3. limits, checked and reserved atomically: resume chat and dashboard chat messages per user per day
+ *    (two separate limits; a dashboard message answered by Gemini still counts as dashboard), new summaries per user per day (separate safety limit), and an app-wide cap per
  *    provider that protects the shared free-tier quota (Gemini cap counts summaries AND Gemini chats);
  * 4. the AI call; if it fails, the reservation is deleted so failed calls are free.
  */
@@ -74,7 +74,8 @@ public class AiService {
     private final AiUsageRepository usageRepository;
     private final AiClient geminiClient;
     private final GroqClient groqClient;
-    private final int chatDailyLimit;
+    private final int resumeChatDailyLimit;
+    private final int dashboardChatDailyLimit;
     private final int summaryDailyLimit;
     private final int geminiDailyCap;
     private final int groqDailyCap;
@@ -88,7 +89,8 @@ public class AiService {
             AiUsageRepository usageRepository,
             AiClient geminiClient,
             GroqClient groqClient,
-            @Value("${resqora.ai.daily-limit:20}") int chatDailyLimit,
+            @Value("${resqora.ai.resume-chat-daily-limit:20}") int resumeChatDailyLimit,
+            @Value("${resqora.ai.dashboard-chat-daily-limit:20}") int dashboardChatDailyLimit,
             @Value("${resqora.ai.summary-daily-limit:10}") int summaryDailyLimit,
             @Value("${resqora.ai.daily-cap:450}") int geminiDailyCap,
             @Value("${resqora.ai.groq-daily-cap:900}") int groqDailyCap,
@@ -100,7 +102,8 @@ public class AiService {
         this.usageRepository = usageRepository;
         this.geminiClient = geminiClient;
         this.groqClient = groqClient;
-        this.chatDailyLimit = chatDailyLimit;
+        this.resumeChatDailyLimit = resumeChatDailyLimit;
+        this.dashboardChatDailyLimit = dashboardChatDailyLimit;
         this.summaryDailyLimit = summaryDailyLimit;
         this.geminiDailyCap = geminiDailyCap;
         this.groqDailyCap = groqDailyCap;
@@ -125,19 +128,19 @@ public class AiService {
         return new SummaryResponse(summary, false);
     }
 
-    // Chat about one resume (Gemini). Every message is a real AI call and uses one chat message.
+    // Chat about one resume (Gemini). Every message is a real AI call and uses one resume chat message.
     public ChatResponse chat(Long resumeId, ChatRequest request, Authentication authentication) {
         Long userId = requireAiEnabled(authentication);
         Resume resume = resumeService.findOwnedResume(resumeId, authentication);
         requireConfigured(geminiClient.isConfigured());
-        Reservation reservation = reserve(userId, Kind.CHAT, Provider.GEMINI);
+        Reservation reservation = reserve(userId, Kind.RESUME_CHAT, Provider.GEMINI);
         String reply = call(reservation,
                 () -> geminiClient.generateText(CHAT_RULES, buildChatPrompt(resume, request)));
-        return new ChatResponse(reply, reservation.remainingToday(), chatDailyLimit);
+        return new ChatResponse(reply, reservation.remainingToday(), resumeChatDailyLimit);
     }
 
     // Chat about all of the user's own resumes. Groq when its key is set (keeps Gemini's smaller free
-    // quota for summaries and resume chat), otherwise Gemini. Same per-user chat limit either way.
+    // quota for summaries and resume chat), otherwise Gemini. Uses a dashboard chat message either way.
     public ChatResponse dashboardChat(DashboardChatRequest request, Authentication authentication) {
         Long userId = requireAiEnabled(authentication);
         Provider provider = groqClient.isConfigured() ? Provider.GROQ
@@ -147,16 +150,36 @@ public class AiService {
         List<OwnedResume> resumes = resumeService.ownResumesWithAnalysis(userId);
         List<ChatMessage> history = request.history() == null ? List.of() : request.history();
         String prompt = DashboardChatPrompt.build(resumes, request.message(), history);
-        Reservation reservation = reserve(userId, Kind.CHAT, provider);
+        Reservation reservation = reserve(userId, Kind.DASHBOARD_CHAT, provider);
         String reply = call(reservation, () -> provider == Provider.GROQ
                 ? groqClient.generateText(DashboardChatPrompt.RULES, prompt)
                 : geminiClient.generateText(DashboardChatPrompt.RULES, prompt));
-        return new ChatResponse(reply, reservation.remainingToday(), chatDailyLimit);
+        return new ChatResponse(reply, reservation.remainingToday(), dashboardChatDailyLimit);
     }
 
     public AiUsageResponse usage(Authentication authentication) {
-        long used = chatsToday((Long) authentication.getPrincipal());
-        return new AiUsageResponse((int) used, chatDailyLimit, (int) Math.max(0, chatDailyLimit - used));
+        Long userId = (Long) authentication.getPrincipal();
+        return AiUsageResponse.of(
+                AiUsageResponse.Bucket.of(countToday(userId, Kind.RESUME_CHAT), resumeChatDailyLimit),
+                AiUsageResponse.Bucket.of(countToday(userId, Kind.DASHBOARD_CHAT), dashboardChatDailyLimit));
+    }
+
+    // daily per-user limit of one kind of call
+    private int dailyLimit(Kind kind) {
+        return switch (kind) {
+            case RESUME_CHAT -> resumeChatDailyLimit;
+            case DASHBOARD_CHAT -> dashboardChatDailyLimit;
+            case SUMMARY -> summaryDailyLimit;
+        };
+    }
+
+    private AiDailyLimitExceededException limitReached(Kind kind) {
+        long wait = secondsUntilReset();
+        return switch (kind) {
+            case RESUME_CHAT -> AiDailyLimitExceededException.resumeChat(resumeChatDailyLimit, wait);
+            case DASHBOARD_CHAT -> AiDailyLimitExceededException.dashboardChat(dashboardChatDailyLimit, wait);
+            case SUMMARY -> AiDailyLimitExceededException.summaries(wait);
+        };
     }
 
     // Checked before anything else, so a user with AI off never has data sent (not even a cached summary).
@@ -197,14 +220,12 @@ public class AiService {
                 User user = userRepository.findByIdForUpdate(userId)
                         .orElseThrow(AuthenticatedUserNotFoundException::new);
                 Instant today = startOfToday();
-                long chatsToday = usageRepository.countByUserIdAndKindAndCreatedAtGreaterThanEqual(
-                        userId, Kind.CHAT, today);
-                if (kind == Kind.CHAT && chatsToday >= chatDailyLimit) {
-                    throw new AiDailyLimitExceededException(secondsUntilReset());
-                }
-                if (kind == Kind.SUMMARY && usageRepository.countByUserIdAndKindAndCreatedAtGreaterThanEqual(
-                        userId, Kind.SUMMARY, today) >= summaryDailyLimit) {
-                    throw new AiDailyLimitExceededException(secondsUntilReset());
+                // each kind has its own bucket: a resume chat never uses a dashboard message and vice versa
+                long usedToday = usageRepository.countByUserIdAndKindAndCreatedAtGreaterThanEqual(
+                        userId, kind, today);
+                int limit = dailyLimit(kind);
+                if (usedToday >= limit) {
+                    throw limitReached(kind);
                 }
                 int cap = provider == Provider.GROQ ? groqDailyCap : geminiDailyCap;
                 if (usageRepository.countByProviderAndCreatedAtGreaterThanEqual(provider, today) >= cap) {
@@ -212,8 +233,7 @@ public class AiService {
                     throw new AiUnavailableException();
                 }
                 AiUsage saved = usageRepository.saveAndFlush(new AiUsage(user, kind, provider));
-                long chatsAfter = kind == Kind.CHAT ? chatsToday + 1 : chatsToday;
-                return new Reservation(saved.getId(), (int) Math.max(0, chatDailyLimit - chatsAfter));
+                return new Reservation(saved.getId(), (int) Math.max(0, limit - (usedToday + 1)));
             });
         }
     }
@@ -273,7 +293,7 @@ public class AiService {
         return LocalDate.ofInstant(now, zone).atStartOfDay(zone).toInstant();
     }
 
-    private long chatsToday(Long userId) {
-        return usageRepository.countByUserIdAndKindAndCreatedAtGreaterThanEqual(userId, Kind.CHAT, startOfToday());
+    private long countToday(Long userId, Kind kind) {
+        return usageRepository.countByUserIdAndKindAndCreatedAtGreaterThanEqual(userId, kind, startOfToday());
     }
 }

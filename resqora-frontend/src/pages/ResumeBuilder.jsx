@@ -3,9 +3,11 @@ import { Link } from 'react-router-dom'
 import { api, ApiError } from '../api.js'
 import { Button, ErrorBox, Input, TextArea } from '../components/ui.jsx'
 import ResumeDocument from '../builder/ResumeDocument.jsx'
+import { BulletList, SkillsInput } from '../builder/inputs.jsx'
 import {
   TEMPLATES, emptyDraft, fromParsed, toPayload, fileBaseName,
   addJob, addSchool, addProject, moveItem,
+  saveDraft, loadDraft, clearDraft, isEmptyDraft,
 } from '../builder/model.js'
 
 const STEPS = [
@@ -20,7 +22,12 @@ const MAX_SIZE = 2 * 1024 * 1024
 function Stepper({ current }) {
   const idx = STEPS.findIndex((s) => s.id === current)
   return (
-    <ol className="flex flex-wrap items-center gap-x-2 gap-y-2 text-[13px] mb-7">
+    <>
+    <p className="sm:hidden text-[13px] mb-5">
+      <span className="text-faint">Step {idx + 1} of {STEPS.length}</span>
+      <span className="font-semibold"> · {STEPS[idx].label}</span>
+    </p>
+    <ol className="hidden sm:flex flex-wrap items-center gap-x-2 gap-y-2 text-[13px] mb-7">
       {STEPS.map((s, i) => {
         const on = i === idx
         const done = i < idx
@@ -33,10 +40,11 @@ function Stepper({ current }) {
         )
       })}
     </ol>
+    </>
   )
 }
 
-function ScaledSheet({ children }) {
+function ScaledSheet({ children, zoom = false }) {
   const outer = useRef(null)
   const inner = useRef(null)
   const [scale, setScale] = useState(1)
@@ -45,7 +53,9 @@ function ScaledSheet({ children }) {
     const el = outer.current
     if (!el) return
     const measure = () => {
-      const next = Math.min(1, el.clientWidth / 794)
+      const fit = Math.min(1, el.clientWidth / 794)
+      // zoomed: real-size-ish text (11pt reads as ~11px) and the page scrolls sideways
+      const next = zoom ? Math.max(fit, 0.75) : fit
       setScale(next)
       setHeight(inner.current ? inner.current.offsetHeight : 1123)
     }
@@ -53,18 +63,43 @@ function ScaledSheet({ children }) {
     const ro = new ResizeObserver(measure)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [children])
+  }, [children, zoom])
   return (
-    <div ref={outer} className="w-full overflow-hidden" style={{ height: height * scale }}>
-      <div ref={inner} style={{ width: 794, transform: `scale(${scale})`, transformOrigin: 'top left' }}>
-        {children}
+    <div ref={outer} className="w-full overflow-x-auto overflow-y-hidden" style={{ height: height * scale + (zoom ? 12 : 0) }}>
+      <div style={{ width: 794 * scale, height: height * scale, overflow: 'hidden' }}>
+        <div ref={inner} style={{ width: 794, transform: `scale(${scale})`, transformOrigin: 'top left' }}>
+          {children}
+        </div>
       </div>
     </div>
   )
 }
 
-function Field({ label, value, onChange, placeholder }) {
-  return <Input label={label} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
+function SheetFrame({ payload }) {
+  const [zoom, setZoom] = useState(false)
+  return (
+    <div className="bg-sunken border border-line rounded-xl p-3 sm:p-4">
+      <div className="sm:hidden flex justify-end mb-2">
+        <button type="button" onClick={() => setZoom(!zoom)} className="text-xs font-medium text-muted border border-line bg-surface rounded-md px-2.5 h-7">
+          {zoom ? 'Fit to screen' : 'Zoom to read'}
+        </button>
+      </div>
+      <div className="mx-auto shadow-md bg-white">
+        <ScaledSheet zoom={zoom}><ResumeDocument payload={payload} /></ScaledSheet>
+      </div>
+    </div>
+  )
+}
+
+function Field({ label, value, onChange, placeholder, required, error, inputRef, ...rest }) {
+  return (
+    <div>
+      <Input label={required ? <>{label} <span className="text-bad">*</span></> : label} value={value} placeholder={placeholder}
+        ref={inputRef} aria-invalid={error ? true : undefined} required={required}
+        onChange={(e) => onChange(e.target.value)} {...rest} />
+      {error && <p className="mt-1 text-xs text-bad">{error}</p>}
+    </div>
+  )
 }
 
 function Area({ label, value, onChange, hint, rows = 4 }) {
@@ -108,8 +143,27 @@ function CardList({ title, note, items, onMove, onRemove, onAdd, addLabel, child
 }
 
 export default function ResumeBuilder() {
-  const [step, setStep] = useState('start')
-  const [draft, setDraft] = useState(emptyDraft)
+  const [restored] = useState(loadDraft)
+  const [step, setStep] = useState(() => (restored && restored.step && restored.step !== 'start' ? restored.step : 'start'))
+  const [draft, setDraft] = useState(() => (restored ? restored.draft : emptyDraft()))
+  const [tab, setTab] = useState('edit')
+  const [nameError, setNameError] = useState('')
+  const nameRef = useRef(null)
+  const payload = toPayload(draft)
+  const hasSaved = !isEmptyDraft(draft)
+
+  useEffect(() => { saveDraft(step, draft) }, [step, draft])
+  useEffect(() => { if (payload.name) setNameError('') }, [payload.name])
+  useEffect(() => { window.scrollTo(0, 0) }, [step])
+
+  const requireName = () => {
+    if (payload.name) return true
+    setTab('edit')
+    setStep('form')
+    setNameError('Add your name. It goes at the top of the file.')
+    setTimeout(() => { nameRef.current?.focus(); nameRef.current?.scrollIntoView({ block: 'center' }) }, 50)
+    return false
+  }
   const [error, setError] = useState('')
   const [busy, setBusy] = useState('')
   const [existing, setExisting] = useState([])
@@ -138,8 +192,7 @@ export default function ResumeBuilder() {
     if (file.size > MAX_SIZE) return setError('File must be 2 MB or smaller.')
     setBusy('prefill'); setError('')
     try {
-      const uploaded = await api.uploadResume(file)
-      const parsed = await api.parsed(uploaded.id)
+      const parsed = await api.parseOnly(file)
       setDraft((d) => ({ ...fromParsed(parsed), templateId: d.templateId }))
       setStep('format')
     } catch (e) { setError(e.message) }
@@ -147,11 +200,10 @@ export default function ResumeBuilder() {
   }
 
   const download = async (format) => {
-    const payload = { ...toPayload(draft), format }
-    if (!payload.name) return setError('Add your name before downloading.')
+    if (!requireName()) return
     setBusy(`download-${format}`); setError('')
     try {
-      const { blob, filename } = await api.exportResume(payload)
+      const { blob, filename } = await api.exportResume({ ...payload, format })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -162,25 +214,39 @@ export default function ResumeBuilder() {
       URL.revokeObjectURL(url)
     } catch (e) {
       setError(e instanceof ApiError && e.status === 404
-        ? 'Download is not available yet. The preview above is how the file will look.'
-        : e.message)
+        ? 'Download is not available yet. Your details are saved, so try again in a minute.'
+        : e.status === 0 || e.status >= 500
+          ? 'The server is waking up or busy. Your details are saved, so try again in a minute.'
+          : e.message)
     } finally { setBusy('') }
   }
 
   return (
     <div className="max-w-5xl">
       <Stepper current={step} />
-      <ErrorBox message={error} />
+      {step !== 'preview' && <ErrorBox message={error} />}
 
       {step === 'start' && (
         <div>
           <h1 className="font-serif text-3xl font-medium tracking-tight">Build a resume</h1>
           <p className="text-sm text-muted mt-2 max-w-xl">Upload a resume to fill the form, or start blank. Then pick a format, edit the details, and download the file.</p>
-          <div className="grid gap-4 sm:grid-cols-2 mt-8">
+          {hasSaved && (
+            <div className="mt-8 bg-surface border border-line rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <p className="font-medium">Continue where you left off</p>
+                <p className="text-sm text-muted mt-1">{payload.name || 'Your draft'} is saved on this device.</p>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <Button variant="ghost" onClick={() => { clearDraft(); setDraft(emptyDraft()) }}>Start over</Button>
+                <Button onClick={() => setStep('form')}>Continue</Button>
+              </div>
+            </div>
+          )}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 mt-8">
             <button type="button" disabled={busy === 'prefill'} onClick={() => fileInput.current.click()}
               className="text-left bg-surface border border-line rounded-xl p-5 hover:border-faint transition-colors disabled:opacity-60">
-              <p className="font-medium">Upload to prefill</p>
-              <p className="text-sm text-muted mt-1">PDF or DOCX, up to 2 MB. This also saves it under Your resumes.</p>
+              <p className="font-medium">{busy === 'prefill' ? 'Reading your resume...' : 'Upload to prefill'}</p>
+              <p className="text-sm text-muted mt-1">PDF or DOCX, up to 2 MB. We only read it, so it doesn't use a resume slot.</p>
             </button>
             <button type="button" onClick={() => { setDraft(emptyDraft()); setError(''); setStep('format') }}
               className="text-left bg-surface border border-line rounded-xl p-5 hover:border-faint transition-colors">
@@ -218,14 +284,14 @@ export default function ResumeBuilder() {
               const selected = draft.templateId === t.id
               return (
                 <button type="button" key={t.id} onClick={() => setDraft((d) => ({ ...d, templateId: t.id }))}
-                  className={`text-left bg-surface rounded-xl overflow-hidden w-full sm:w-[calc(50%-8px)] lg:w-[calc((100%-32px)/3)] border transition-colors ${selected ? 'border-ink ring-1 ring-ink' : 'border-line hover:border-faint'}`}>
+                  className={`text-left bg-surface rounded-xl overflow-hidden w-[calc(50%-8px)] lg:w-[calc((100%-32px)/3)] border transition-colors ${selected ? 'border-ink ring-1 ring-ink' : 'border-line hover:border-faint'}`}>
                   <img src={t.thumb} alt="" className="w-full aspect-[3/4] object-cover object-top bg-sunken border-b border-line" />
-                  <span className="block p-3.5">
+                  <span className="block p-2.5 sm:p-3.5">
                     <span className="flex items-center justify-between gap-2">
                       <span className="font-semibold text-[15px]">{t.name}</span>
-                      {selected && <span className="text-[11px] font-semibold bg-ink text-paper px-2 py-0.5 rounded-full">Selected</span>}
+                      {selected && <span className="text-[11px] font-semibold bg-ink text-paper px-2 py-0.5 rounded-full">✓<span className="hidden sm:inline"> Selected</span></span>}
                     </span>
-                    <span className="block text-[13px] text-muted mt-1">{t.blurb}</span>
+                    <span className="hidden sm:block text-[13px] text-muted mt-1">{t.blurb}</span>
                   </span>
                 </button>
               )
@@ -241,16 +307,26 @@ export default function ResumeBuilder() {
       {step === 'form' && (
         <div>
           <h1 className="font-serif text-3xl font-medium tracking-tight">Your details</h1>
-          <p className="text-sm text-muted mt-2 mb-7">This is a form, not a document editor. The file is built when you download. Empty sections are left off the page.</p>
-          <div className="space-y-4 pb-20">
+          <p className="text-sm text-muted mt-2 mb-5 lg:mb-7">Type on the left and the page updates on the right. Empty sections are left off the file. Your draft saves on this device as you type.</p>
+          <div className="lg:hidden grid grid-cols-2 p-1 mb-5 rounded-lg bg-sunken border border-line text-sm font-medium" role="tablist">
+            {['edit', 'preview'].map((k) => (
+              <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
+                className={`h-9 rounded-md ${tab === k ? 'bg-surface shadow-sm text-ink' : 'text-muted'}`}>
+                {k === 'edit' ? 'Edit' : 'Preview'}
+              </button>
+            ))}
+          </div>
+          <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,500px)] lg:gap-6 items-start">
+          <div className={tab === 'edit' ? '' : 'hidden lg:block'}>
+          <div className="space-y-4">
             <section className="bg-surface border border-line rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
               <h2 className="text-[15px] font-semibold tracking-tight px-5 sm:px-6 pt-5">Contact</h2>
-              <div className="px-5 sm:px-6 pb-5 sm:pb-6 pt-4 grid gap-3.5 sm:grid-cols-2">
-                <Field label="Full name" value={draft.contact.fullName} onChange={(v) => setContact('fullName', v)} />
+              <div className="px-5 sm:px-6 pb-5 sm:pb-6 pt-4 grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+                <Field label="Full name" required error={nameError} inputRef={nameRef} autoComplete="name" value={draft.contact.fullName} onChange={(v) => setContact('fullName', v)} />
                 <Field label="Headline" value={draft.contact.headline} onChange={(v) => setContact('headline', v)} placeholder="Frontend Engineer" />
                 <Field label="City" value={draft.contact.city} onChange={(v) => setContact('city', v)} />
-                <Field label="Email" value={draft.contact.email} onChange={(v) => setContact('email', v)} />
-                <Field label="Phone" value={draft.contact.phone} onChange={(v) => setContact('phone', v)} />
+                <Field label="Email" type="email" inputMode="email" autoComplete="email" value={draft.contact.email} onChange={(v) => setContact('email', v)} />
+                <Field label="Phone" type="tel" inputMode="tel" autoComplete="tel" value={draft.contact.phone} onChange={(v) => setContact('phone', v)} />
                 <Field label="LinkedIn" value={draft.contact.linkedin} onChange={(v) => setContact('linkedin', v)} />
                 <Field label="GitHub" value={draft.contact.github} onChange={(v) => setContact('github', v)} />
               </div>
@@ -259,35 +335,35 @@ export default function ResumeBuilder() {
             <section className="bg-surface border border-line rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
               <h2 className="text-[15px] font-semibold tracking-tight px-5 sm:px-6 pt-5">Summary</h2>
               <div className="px-5 sm:px-6 pb-5 sm:pb-6 pt-4">
-                <Area label="Professional summary" value={draft.summary} onChange={(v) => setField('summary', v)} />
+                <Area label="Professional summary" value={draft.summary} onChange={(v) => setField('summary', v)} rows={3} hint="Two or three sentences about you." />
               </div>
             </section>
 
             <section className="bg-surface border border-line rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
               <h2 className="text-[15px] font-semibold tracking-tight px-5 sm:px-6 pt-5">Skills</h2>
               <div className="px-5 sm:px-6 pb-5 sm:pb-6 pt-4">
-                <Field label="Skills" value={draft.skills} onChange={(v) => setField('skills', v)} placeholder="Java · Spring Boot · REST APIs" />
+                <SkillsInput value={draft.skills} onChange={(v) => setField('skills', v)} />
               </div>
             </section>
 
             <section className="bg-surface border border-line rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
               <h2 className="text-[15px] font-semibold tracking-tight px-5 sm:px-6 pt-5">Highlights</h2>
               <div className="px-5 sm:px-6 pb-5 sm:pb-6 pt-4">
-                <Area label="Highlights" value={draft.highlights} onChange={(v) => setField('highlights', v)} hint="One per line. Shown on the Combination format." rows={3} />
+                <BulletList label="Highlights" value={draft.highlights} onChange={(v) => setField('highlights', v)} placeholder="Cut report time from 6 hours to 30 minutes" addLabel="Add highlight" hint="Short wins that show near the top. Up to 20." />
               </div>
             </section>
 
             <CardList title="Experience" note="Use the arrows to reorder" items={draft.experience}
               onMove={(i, dir) => setDraft((d) => ({ ...d, experience: moveItem(d.experience, i, dir) }))}
-              onRemove={(i) => setDraft((d) => ({ ...d, experience: d.experience.filter((_, j) => j !== i).length ? d.experience.filter((_, j) => j !== i) : d.experience }))}
+              onRemove={(i) => setDraft((d) => ({ ...d, experience: d.experience.length > 1 ? d.experience.filter((_, j) => j !== i) : d.experience }))}
               onAdd={() => setDraft(addJob)} addLabel="+ Add another job">
               {(job, i) => (
-                <div className="grid gap-3.5 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
                   <Field label="Title" value={job.title} onChange={(v) => setDraft((d) => ({ ...d, experience: d.experience.map((x, j) => j === i ? { ...x, title: v } : x) }))} />
                   <Field label="Company" value={job.company} onChange={(v) => setDraft((d) => ({ ...d, experience: d.experience.map((x, j) => j === i ? { ...x, company: v } : x) }))} />
                   <Field label="Location" value={job.location} onChange={(v) => setDraft((d) => ({ ...d, experience: d.experience.map((x, j) => j === i ? { ...x, location: v } : x) }))} />
                   <Field label="Dates" value={job.dates} onChange={(v) => setDraft((d) => ({ ...d, experience: d.experience.map((x, j) => j === i ? { ...x, dates: v } : x) }))} placeholder="Jul 2024 – Present" />
-                  <Area label="Bullets" value={job.bullets} onChange={(v) => setDraft((d) => ({ ...d, experience: d.experience.map((x, j) => j === i ? { ...x, bullets: v } : x) }))} hint="One bullet per line." />
+                  <BulletList label="What you did" value={job.bullets} onChange={(v) => setDraft((d) => ({ ...d, experience: d.experience.map((x, j) => j === i ? { ...x, bullets: v } : x) }))} placeholder="Built a dashboard used by 40+ managers" />
                 </div>
               )}
             </CardList>
@@ -297,12 +373,12 @@ export default function ResumeBuilder() {
               onRemove={(i) => setDraft((d) => ({ ...d, education: d.education.length > 1 ? d.education.filter((_, j) => j !== i) : d.education }))}
               onAdd={() => setDraft(addSchool)} addLabel="+ Add another school">
               {(school, i) => (
-                <div className="grid gap-3.5 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
                   <Field label="Degree" value={school.degree} onChange={(v) => setDraft((d) => ({ ...d, education: d.education.map((x, j) => j === i ? { ...x, degree: v } : x) }))} />
                   <Field label="School" value={school.school} onChange={(v) => setDraft((d) => ({ ...d, education: d.education.map((x, j) => j === i ? { ...x, school: v } : x) }))} />
                   <Field label="Dates" value={school.dates} onChange={(v) => setDraft((d) => ({ ...d, education: d.education.map((x, j) => j === i ? { ...x, dates: v } : x) }))} />
                   <Field label="CGPA" value={school.gpa} onChange={(v) => setDraft((d) => ({ ...d, education: d.education.map((x, j) => j === i ? { ...x, gpa: v } : x) }))} />
-                  <Area label="Details" value={school.details} onChange={(v) => setDraft((d) => ({ ...d, education: d.education.map((x, j) => j === i ? { ...x, details: v } : x) }))} hint="One point per line, such as coursework." rows={2} />
+                  <BulletList label="Details" value={school.details} onChange={(v) => setDraft((d) => ({ ...d, education: d.education.map((x, j) => j === i ? { ...x, details: v } : x) }))} placeholder="Relevant coursework, awards" addLabel="Add detail" hint="Optional, like coursework or awards." />
                 </div>
               )}
             </CardList>
@@ -312,27 +388,33 @@ export default function ResumeBuilder() {
               onRemove={(i) => setDraft((d) => ({ ...d, projects: d.projects.length > 1 ? d.projects.filter((_, j) => j !== i) : d.projects }))}
               onAdd={() => setDraft(addProject)} addLabel="+ Add another project">
               {(project, i) => (
-                <div className="grid gap-3.5 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
                   <Field label="Name" value={project.name} onChange={(v) => setDraft((d) => ({ ...d, projects: d.projects.map((x, j) => j === i ? { ...x, name: v } : x) }))} />
                   <Field label="Dates" value={project.dates} onChange={(v) => setDraft((d) => ({ ...d, projects: d.projects.map((x, j) => j === i ? { ...x, dates: v } : x) }))} />
                   <Field label="Stack" value={project.stack} onChange={(v) => setDraft((d) => ({ ...d, projects: d.projects.map((x, j) => j === i ? { ...x, stack: v } : x) }))} placeholder="Java · MySQL" />
-                  <Area label="Bullets" value={project.bullets} onChange={(v) => setDraft((d) => ({ ...d, projects: d.projects.map((x, j) => j === i ? { ...x, bullets: v } : x) }))} hint="One bullet per line." rows={3} />
+                  <BulletList label="What it does" value={project.bullets} onChange={(v) => setDraft((d) => ({ ...d, projects: d.projects.map((x, j) => j === i ? { ...x, bullets: v } : x) }))} placeholder="Predicted churn with 84% accuracy" />
                 </div>
               )}
             </CardList>
 
             <section className="bg-surface border border-line rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
               <h2 className="text-[15px] font-semibold tracking-tight px-5 sm:px-6 pt-5">More</h2>
-              <div className="px-5 sm:px-6 pb-5 sm:pb-6 pt-4 grid gap-3.5">
-                <Area label="Certifications" value={draft.certifications} onChange={(v) => setField('certifications', v)} rows={2} />
-                <Field label="Languages" value={draft.languages} onChange={(v) => setField('languages', v)} placeholder="English · Hindi" />
-                <Area label="Achievements" value={draft.achievements} onChange={(v) => setField('achievements', v)} hint="One per line. Shown on the Campus format." rows={3} />
+              <div className="px-5 sm:px-6 pb-5 sm:pb-6 pt-4 grid grid-cols-1 gap-3.5">
+                <BulletList label="Certifications" value={draft.certifications} onChange={(v) => setField('certifications', v)} placeholder="Google Data Analytics Certificate" addLabel="Add certification" hint="Optional." />
+                <Field label="Languages" value={draft.languages} onChange={(v) => setField('languages', v)} placeholder="English, Hindi" />
+                <BulletList label="Achievements" value={draft.achievements} onChange={(v) => setField('achievements', v)} placeholder="Winner, Smart India Hackathon 2025" addLabel="Add achievement" hint="Optional. Up to 20." />
               </div>
             </section>
           </div>
-          <div className="sticky bottom-0 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 border-t border-line bg-paper/95 backdrop-blur flex justify-between">
+          </div>
+          <aside className={`${tab === 'preview' ? '' : 'hidden'} lg:block lg:sticky lg:top-20`}>
+            <SheetFrame payload={payload} />
+            <p className="text-xs text-muted mt-2">Live page in the {TEMPLATES.find((t) => t.id === draft.templateId)?.name} format. The download matches it.</p>
+          </aside>
+          </div>
+          <div className="mt-6 flex justify-between gap-3 lg:sticky lg:bottom-0 lg:-mx-6 lg:px-6 lg:py-3 lg:border-t lg:border-line lg:bg-paper/95 lg:backdrop-blur">
             <Button variant="ghost" onClick={() => setStep('format')}>Back</Button>
-            <Button onClick={() => { setError(''); setStep('preview') }}>Continue to preview</Button>
+            <Button onClick={() => { setError(''); if (requireName()) setStep('preview') }}>Continue to download</Button>
           </div>
         </div>
       )}
@@ -343,6 +425,7 @@ export default function ResumeBuilder() {
           <p className="text-sm text-muted mt-2 mb-7">This is how the file will look. Download it, or go back to change the details.</p>
           <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)] items-start">
             <aside className="space-y-3 lg:sticky lg:top-20">
+              <ErrorBox message={error} />
               <Button className="w-full" disabled={busy.startsWith('download')} onClick={() => download('pdf')}>
                 {busy === 'download-pdf' ? 'Preparing...' : 'Download PDF'}
               </Button>
@@ -362,13 +445,7 @@ export default function ResumeBuilder() {
                 ))}
               </div>
             </aside>
-            <div className="bg-[#e8e8ea] border border-line rounded-xl p-3 sm:p-5">
-              <div className="mx-auto shadow-lg bg-white">
-                <ScaledSheet>
-                  <ResumeDocument data={draft} templateId={draft.templateId} />
-                </ScaledSheet>
-              </div>
-            </div>
+            <SheetFrame payload={payload} />
           </div>
         </div>
       )}

@@ -183,4 +183,89 @@ class ResumePdfExporterTest {
             }
         }
     }
+
+    private static BuilderExportRequest everySection(String templateId) {
+        return new BuilderExportRequest(templateId, "Meera Joshi", null, "meera@example.com", null, null, null, null,
+                "Analyst.", List.of("SQL"),
+                List.of(new ExperienceEntry("Freshcart", "Data Analyst", "2024", "Built dashboards")),
+                List.of(new EducationEntry("IIT Madras", "B.Tech", "2020 – 2024", null)),
+                List.of(new ProjectEntry("Churn", "Model")), List.of("AWS"), "pdf",
+                List.of("Cut report time by 60%"), List.of("Hackathon finalist"), List.of("English", "Hindi"));
+    }
+
+    static final Map<String, List<String>> ORDER = Map.of(
+            "classic", List.of("SUMMARY", "HIGHLIGHTS", "EXPERIENCE", "EDUCATION", "PROJECTS", "SKILLS",
+                    "CERTIFICATIONS", "ACHIEVEMENTS", "LANGUAGES"),
+            "centered", List.of("SUMMARY", "HIGHLIGHTS", "EXPERIENCE", "EDUCATION", "PROJECTS", "SKILLS",
+                    "CERTIFICATIONS", "ACHIEVEMENTS", "LANGUAGES"),
+            "header-band", List.of("SUMMARY", "HIGHLIGHTS", "EXPERIENCE", "EDUCATION", "PROJECTS", "SKILLS",
+                    "CERTIFICATIONS", "ACHIEVEMENTS", "LANGUAGES"),
+            "combination", List.of("SUMMARY", "SKILLS", "HIGHLIGHTS", "EXPERIENCE", "PROJECTS", "EDUCATION",
+                    "CERTIFICATIONS", "ACHIEVEMENTS", "LANGUAGES"),
+            "campus", List.of("SUMMARY", "HIGHLIGHTS", "EDUCATION", "PROJECTS", "EXPERIENCE", "SKILLS",
+                    "CERTIFICATIONS", "ACHIEVEMENTS", "LANGUAGES"));
+
+    @ParameterizedTest
+    @ValueSource(strings = {"classic", "combination", "campus", "centered", "header-band"})
+    void everySectionInFrostsOrder(String templateId) throws Exception {
+        try (PDDocument document = Loader.loadPDF(exporter.export(everySection(templateId)))) {
+            String text = text(document).replace("\r", "");
+            List<String> headings = text.lines().map(String::strip).map(String::toUpperCase)
+                    .filter(ORDER.get("classic")::contains).toList();
+            assertEquals(ORDER.get(templateId), headings, text);
+            assertTrue(text.contains("• Cut report time by 60%"), text);
+            assertTrue(text.contains("• Hackathon finalist"), text);
+            assertTrue(text.contains("\nEnglish, Hindi\n"), text);
+        }
+    }
+
+    @Test
+    void bulletsAndTitlesStayTogetherAcrossPageBreaks() throws Exception {
+        // vary the amount of content so the page break lands at many different points
+        for (int jobs = 6; jobs <= 14; jobs++) {
+            for (int words = 18; words <= 30; words += 4) {
+                int n = jobs;
+                String filler = " lorem".repeat(words);
+                List<ExperienceEntry> entries = IntStream.rangeClosed(1, n).mapToObj(j -> new ExperienceEntry(
+                        "Company" + j, "Engineer" + j, "2020", "B" + j + "a" + filler + "\nB" + j + "b" + filler
+                        + "\nB" + j + "c" + filler)).toList();
+                BuilderExportRequest request = new BuilderExportRequest("classic", "Page Break", null, null, null,
+                        null, null, null, null, null, entries, null, null, null, "pdf");
+                try (PDDocument document = Loader.loadPDF(exporter.export(request))) {
+                    for (int page = 2; page <= document.getNumberOfPages(); page++) {
+                        List<String> before = pageLines(document, page - 1);
+                        List<String> after = pageLines(document, page);
+                        String last = before.get(before.size() - 1);
+                        String first = after.get(0);
+                        String where = jobs + " jobs, " + words + " words, page " + page + ": " + last + " | " + first;
+                        // a page starts with a new bullet or a new entry, never the middle of a bullet
+                        assertTrue(first.startsWith("•") || first.startsWith("Engineer"), where);
+                        // a title or company line never ends a page on its own
+                        assertFalse(last.startsWith("Engineer") || last.startsWith("Company"), where);
+                    }
+                }
+            }
+        }
+    }
+
+    private static List<String> pageLines(PDDocument document, int page) throws Exception {
+        PDFTextStripper stripper = new PDFTextStripper();
+        stripper.setStartPage(page);
+        stripper.setEndPage(page);
+        return stripper.getText(document).lines().map(String::strip).filter(l -> !l.isEmpty()).toList();
+    }
+
+    @Test
+    void textTheFontsCannotShowIsRefusedNotPrintedAsQuestionMarks() {
+        BuilderExportRequest hindi = new BuilderExportRequest("classic", "रवि कुमार", null, null, null, null, null,
+                null, null, null, null, null, null, null, "pdf");
+        var error = assertThrows(com.resqora.resqora_backend.exception.PdfTextNotSupportedException.class,
+                () -> exporter.export(hindi));
+        assertTrue(error.getMessage().contains("Devanagari (Hindi/Marathi) text"), error.getMessage());
+        assertTrue(error.getMessage().contains("Name: \"रवि कुमार\""), error.getMessage());
+        // invisible joiners and variation selectors are dropped, not refused
+        BuilderExportRequest invisible = new BuilderExportRequest("classic", "Asha\u200D Nair\uFE0F", null, null,
+                null, null, null, null, null, null, null, null, null, null, "pdf");
+        assertEquals("%PDF-", new String(exporter.export(invisible), 0, 5));
+    }
 }

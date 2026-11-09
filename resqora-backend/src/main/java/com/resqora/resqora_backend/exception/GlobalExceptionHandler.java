@@ -1,6 +1,8 @@
 package com.resqora.resqora_backend.exception;
 
 import com.resqora.resqora_backend.dto.ErrorResponse;
+import com.resqora.resqora_backend.dto.builder.BuilderExportRequest;
+import com.resqora.resqora_backend.dto.builder.BuilderFields;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -13,6 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -21,6 +24,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
+import java.util.Collection;
 import java.util.stream.Collectors;
 
 @RestControllerAdvice
@@ -45,11 +49,30 @@ public class GlobalExceptionHandler {
     // @Valid failed on a request body, e.g. blank email or short password
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleBodyValidation(MethodArgumentNotValidException exception) {
+        // builder form errors use the form's own field names; other endpoints keep "field: message"
+        boolean builder = exception.getBindingResult().getTarget() instanceof BuilderExportRequest;
         String message = exception.getBindingResult().getFieldErrors().stream()
-                .map(error -> error.getField() + ": " + error.getDefaultMessage())
+                .map(error -> builder ? describe(error) : error.getField() + ": " + error.getDefaultMessage())
                 .sorted()
                 .collect(Collectors.joining("; "));
         return errorResponse(HttpStatus.BAD_REQUEST, "Validation failed: " + message);
+    }
+
+    // "@Size" says what is too long and by how much, in the names the form uses:
+    // "Experience 4 dates is too long (240 characters, max 200)", "Highlights has too many items (25, max 20)"
+    private static String describe(FieldError error) {
+        if ("Size".equals(error.getCode()) && error.getArguments() != null && error.getArguments().length >= 2
+                && error.getArguments()[1] instanceof Integer max) {
+            String label = BuilderFields.label(error.getField());
+            Object value = error.getRejectedValue();
+            if (value instanceof CharSequence text) {
+                return label + " is too long (" + text.length() + " characters, max " + max + ")";
+            }
+            if (value instanceof Collection<?> items) {
+                return label + " has too many items (" + items.size() + ", max " + max + ")";
+            }
+        }
+        return error.getField() + ": " + error.getDefaultMessage();
     }
 
     // Body is not valid JSON (or missing)
@@ -137,10 +160,15 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AiDailyLimitExceededException.class)
     public ResponseEntity<ErrorResponse> handleAiDailyLimit(AiDailyLimitExceededException exception) {
         ErrorResponse body = new ErrorResponse(429, HttpStatus.TOO_MANY_REQUESTS.getReasonPhrase(),
-                exception.getMessage(), AiDailyLimitExceededException.CODE);
+                exception.getMessage(), exception.getCode());
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                 .header(HttpHeaders.RETRY_AFTER, String.valueOf(exception.getRetryAfterSeconds()))
                 .body(body);
+    }
+
+    @ExceptionHandler(TooManyBuilderRequestsException.class)
+    public ResponseEntity<ErrorResponse> handleTooManyBuilderRequests(TooManyBuilderRequestsException exception) {
+        return tooManyRequests(exception.getMessage(), exception.getRetryAfterSeconds());
     }
 
     @ExceptionHandler(TooManyPasswordAttemptsException.class)
@@ -180,6 +208,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MultipartException.class)
     public ResponseEntity<ErrorResponse> handleMultipart(MultipartException exception) {
         return errorResponse(HttpStatus.BAD_REQUEST, "Upload must be multipart/form-data with a 'file' part");
+    }
+
+    @ExceptionHandler(PdfTextNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handlePdfText(PdfTextNotSupportedException exception) {
+        HttpStatus status = HttpStatus.UNPROCESSABLE_CONTENT;
+        return ResponseEntity.status(status).body(new ErrorResponse(
+                status.value(), status.getReasonPhrase(), exception.getMessage(), PdfTextNotSupportedException.CODE));
     }
 
     @ExceptionHandler(ScannedDocumentException.class)
