@@ -7,6 +7,7 @@ import '@fontsource-variable/inter'
 import '@fontsource/ibm-plex-serif/400.css'
 import '@fontsource/ibm-plex-serif/500.css'
 import '@fontsource/ibm-plex-serif/400-italic.css'
+import '@fontsource/ibm-plex-serif/700.css'
 import './index.css'
 import { wakeServer } from './wake.js'
 
