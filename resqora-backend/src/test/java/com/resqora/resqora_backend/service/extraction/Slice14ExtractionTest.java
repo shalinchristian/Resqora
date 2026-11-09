@@ -79,7 +79,8 @@ class Slice14ExtractionTest {
                 "▪ one", "✓ two", "◦ three", "– four", "• five", "► six", "1. seven");
         ParsedResume resume = parser.parse(text);
         assertEquals(1, resume.experience().size());
-        assertEquals("one two three four five six seven", resume.experience().get(0).description());
+        // each bullet keeps its own line
+        assertEquals("one\ntwo\nthree\nfour\nfive\nsix\nseven", resume.experience().get(0).description());
     }
 
     @Test

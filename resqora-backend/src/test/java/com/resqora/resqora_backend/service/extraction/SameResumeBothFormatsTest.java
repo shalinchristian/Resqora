@@ -68,7 +68,7 @@ class SameResumeBothFormatsTest {
         for (String text : List.of(docxText(sample("15_same_resume.docx")), pdfText(sample("15_same_resume.pdf")))) {
             ParsedResume resume = parser.parse(text);
             assertEquals(List.of(new ExperienceEntry("Infolabz IT Services", "Web Developer Intern", "May 2024 – Jul 2024",
-                    "Built 6 responsive client pages with React and Tailwind CSS, cutting page load time by 30%. "
+                    "Built 6 responsive client pages with React and Tailwind CSS, cutting page load time by 30%.\n"
                             + "Wrote REST endpoints in PHP and MySQL for a booking module used by 200+ customers.")),
                     resume.experience());
             assertEquals(List.of(
@@ -92,7 +92,7 @@ class SameResumeBothFormatsTest {
         List<ExperienceEntry> expected = List.of(
                 new ExperienceEntry("Acme Labs", "Software Developer Trainee", "Jan 2025 – Jun 2025",
                         "Built an internal support dashboard in React for a team of twelve people with a full-stack "
-                                + "Spring Boot setup. Wrote unit tests with JUnit and raised coverage from 40% to 75%."),
+                                + "Spring Boot setup.\nWrote unit tests with JUnit and raised coverage from 40% to 75%."),
                 new ExperienceEntry("Northwind Traders", "Data Analyst", "Jul 2025 – Present",
                         "Cleaned monthly sales data with Python and pandas for the finance reports."));
         assertEquals(expected, fromDocx.experience());

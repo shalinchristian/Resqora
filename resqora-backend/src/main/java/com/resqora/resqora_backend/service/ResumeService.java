@@ -70,23 +70,7 @@ public class ResumeService {
 
     public ResumeUploadResponse uploadResume(MultipartFile file, Authentication authentication) {
 
-        if (file == null || file.isEmpty()) {
-            throw new IllegalArgumentException("File cannot be empty");
-        }
-
-        String fileName = file.getOriginalFilename();
-        if (file.getSize() > Resume.MAX_FILE_BYTES) {
-            throw new FileTooLargeException();
-        }
-        if (fileName == null ||
-            !(fileName.toLowerCase(Locale.ROOT).endsWith(".pdf") ||
-                fileName.toLowerCase(Locale.ROOT).endsWith(".docx"))) {
-
-            throw new IllegalArgumentException(
-                    "Only PDF and DOCX files are supported"
-            );
-        }
-
+        String fileName = checkUpload(file);
 
         Long userId = (Long) authentication.getPrincipal();
         // Check the limit before the (slower) text extraction
@@ -131,6 +115,33 @@ public class ResumeService {
             fileName,
             documentType,
             overallScore);
+    }
+
+    // Builder prefill straight from a file: same checks and parser as an upload, but nothing is stored,
+    // no resume slot is used and no analysis runs
+    public ParsedResume parseWithoutSaving(MultipartFile file) {
+        String fileName = checkUpload(file);
+        String extractedText = documentTextExtractionService.extract(file);
+        String documentType = fileName.substring(fileName.lastIndexOf('.') + 1).toUpperCase(Locale.ROOT);
+        rejectIfNoText(extractedText, documentType);
+        return resumeParser.parse(extractedText);
+    }
+
+    // non-empty, at most 2 MB, .pdf or .docx; returns the file name
+    private static String checkUpload(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("File cannot be empty");
+        }
+        String fileName = file.getOriginalFilename();
+        if (file.getSize() > Resume.MAX_FILE_BYTES) {
+            throw new FileTooLargeException();
+        }
+        if (fileName == null ||
+            !(fileName.toLowerCase(Locale.ROOT).endsWith(".pdf") ||
+                fileName.toLowerCase(Locale.ROOT).endsWith(".docx"))) {
+            throw new IllegalArgumentException("Only PDF and DOCX files are supported");
+        }
+        return fileName;
     }
 
     static final int MIN_TEXT_CHARACTERS = 20;

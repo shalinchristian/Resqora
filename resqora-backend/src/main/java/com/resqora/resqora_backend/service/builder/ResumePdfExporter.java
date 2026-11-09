@@ -1,6 +1,8 @@
 package com.resqora.resqora_backend.service.builder;
 
 import com.resqora.resqora_backend.dto.builder.BuilderExportRequest;
+import com.resqora.resqora_backend.dto.builder.BuilderFields;
+import com.resqora.resqora_backend.exception.PdfTextNotSupportedException;
 import com.resqora.resqora_backend.model.resume.EducationEntry;
 import com.resqora.resqora_backend.model.resume.ExperienceEntry;
 import com.resqora.resqora_backend.model.resume.ProjectEntry;
@@ -176,6 +178,7 @@ public class ResumePdfExporter {
 
         void write(BuilderExportRequest request) throws IOException {
             loadFonts();
+            rejectUnrenderable(request);
             newPage();
             try {
                 writeHeader(request);
@@ -185,8 +188,11 @@ public class ResumePdfExporter {
                         case EXPERIENCE -> writeExperience(request.experience());
                         case EDUCATION -> writeEducation(request.education());
                         case PROJECTS -> writeProjects(request.projects());
-                        case SKILLS -> writeSkills(request.skills());
-                        case CERTIFICATIONS -> writeCertifications(request.certifications());
+                        case HIGHLIGHTS -> writeList("Highlights", request.highlights());
+                        case SKILLS -> writeLine("Skills", request.skills());
+                        case CERTIFICATIONS -> writeList("Certifications", request.certifications());
+                        case ACHIEVEMENTS -> writeList("Achievements", request.achievements());
+                        case LANGUAGES -> writeLine("Languages", request.languages());
                     }
                 }
             } finally {
@@ -290,9 +296,9 @@ public class ResumePdfExporter {
             if (!has(summary)) {
                 return;
             }
-            heading("Summary");
             List<String> paragraphs = Arrays.stream(summary.split("\\R")).map(String::strip)
                     .filter(line -> !line.isEmpty()).toList();
+            heading("Summary", face(Style.REGULAR).lineHeight(BODY_PT));
             for (int i = 0; i < paragraphs.size(); i++) {
                 if (i > 0) {
                     space(BETWEEN_BULLETS);
@@ -307,16 +313,24 @@ public class ResumePdfExporter {
             if (entries.isEmpty()) {
                 return;
             }
-            heading("Experience");
             for (int i = 0; i < entries.size(); i++) {
                 ExperienceEntry entry = entries.get(i);
                 String title = has(entry.title()) ? entry.title() : entry.company();
+                boolean company = has(entry.title()) && has(entry.company());
+                List<String> bullets = bullets(entry.description());
+                // title, company and the first bullet stay on one page
+                float below = (company ? textHeight(face(Style.ITALIC), clean(entry.company()), TEXT_WIDTH) : 0)
+                        + firstBulletHeight(bullets);
+                if (i == 0) {
+                    heading("Experience", splitLineHeight(face(Style.BOLD), clean(title), face(Style.REGULAR),
+                            clean(entry.dates())) + below);
+                }
                 splitLine(face(Style.BOLD), clean(title), face(Style.REGULAR), clean(entry.dates()),
-                        i == 0 ? 0 : BETWEEN_ENTRIES);
-                if (has(entry.title()) && has(entry.company())) {
+                        i == 0 ? 0 : BETWEEN_ENTRIES, below);
+                if (company) {
                     paragraph(face(Style.ITALIC), BODY_PT, clean(entry.company()));
                 }
-                bulletList(bullets(entry.description()));
+                bulletList(bullets);
             }
         }
 
@@ -326,18 +340,25 @@ public class ResumePdfExporter {
             if (entries.isEmpty()) {
                 return;
             }
-            heading("Education");
             for (int i = 0; i < entries.size(); i++) {
                 EducationEntry entry = entries.get(i);
                 String first = has(entry.institution()) ? entry.institution() : entry.degree();
-                splitLine(face(Style.BOLD), clean(first), face(Style.REGULAR), clean(entry.dates()),
-                        i == 0 ? 0 : BETWEEN_ENTRIES);
                 boolean degreeLine = has(entry.institution()) && has(entry.degree());
-                if (degreeLine || has(entry.location())) {
-                    splitLine(face(Style.ITALIC), degreeLine ? clean(entry.degree()) : "",
-                            face(Style.ITALIC), clean(entry.location()), 0);
+                boolean second = degreeLine || has(entry.location());
+                String degree = degreeLine ? clean(entry.degree()) : "";
+                List<String> details = bullets(entry.details());
+                float below = (second ? splitLineHeight(face(Style.ITALIC), degree, face(Style.ITALIC),
+                        clean(entry.location())) : 0) + firstBulletHeight(details);
+                if (i == 0) {
+                    heading("Education", splitLineHeight(face(Style.BOLD), clean(first), face(Style.REGULAR),
+                            clean(entry.dates())) + below);
                 }
-                bulletList(bullets(entry.details()));
+                splitLine(face(Style.BOLD), clean(first), face(Style.REGULAR), clean(entry.dates()),
+                        i == 0 ? 0 : BETWEEN_ENTRIES, below);
+                if (second) {
+                    splitLine(face(Style.ITALIC), degree, face(Style.ITALIC), clean(entry.location()), 0, 0);
+                }
+                bulletList(details);
             }
         }
 
@@ -347,46 +368,53 @@ public class ResumePdfExporter {
             if (entries.isEmpty()) {
                 return;
             }
-            heading("Projects");
             for (int i = 0; i < entries.size(); i++) {
                 ProjectEntry entry = entries.get(i);
+                List<String> bullets = bullets(entry.description());
+                float name = has(entry.name()) ? textHeight(face(Style.BOLD), clean(entry.name()), TEXT_WIDTH) : 0;
+                if (i == 0) {
+                    heading("Projects", name + firstBulletHeight(bullets));
+                }
                 if (has(entry.name())) {
+                    // name and first bullet stay on one page
+                    ensureSpace((i > 0 ? BETWEEN_ENTRIES : 0) + name + firstBulletHeight(bullets));
                     if (i > 0) {
                         space(BETWEEN_ENTRIES);
                     }
-                    ensureSpace(face(Style.BOLD).lineHeight(BODY_PT) * 2);
                     paragraph(face(Style.BOLD), BODY_PT, clean(entry.name()));
                 }
-                bulletList(bullets(entry.description()));
+                bulletList(bullets);
             }
         }
 
-        private void writeSkills(List<String> skills) throws IOException {
-            List<String> values = skills.stream().filter(ResumeDocxExporter::has).map(String::strip).toList();
+        // heading plus one comma-separated line (Skills, Languages)
+        private void writeLine(String title, List<String> items) throws IOException {
+            List<String> values = items.stream().filter(ResumeDocxExporter::has).map(String::strip).toList();
             if (values.isEmpty()) {
                 return;
             }
-            heading("Skills");
+            heading(title, face(Style.REGULAR).lineHeight(BODY_PT));
             paragraph(face(Style.REGULAR), BODY_PT, String.join(", ", values));
         }
 
-        private void writeCertifications(List<String> certifications) throws IOException {
-            List<String> values = certifications.stream().filter(ResumeDocxExporter::has).map(String::strip).toList();
+        // heading plus one bullet per item (Highlights, Certifications, Achievements)
+        private void writeList(String title, List<String> items) throws IOException {
+            List<String> values = items.stream().filter(ResumeDocxExporter::has).map(String::strip).toList();
             if (values.isEmpty()) {
                 return;
             }
-            heading("Certifications");
+            heading(title, firstBulletHeight(values));
             bulletList(values);
         }
 
         // ---- building blocks ----
 
-        // 12pt bold small caps with a full-width rule; kept on the same page as the line after it
-        private void heading(String text) throws IOException {
+        // 12pt bold small caps with a full-width rule; kept on the same page as `keepWithNext` points of
+        // what follows (the first entry's title, company and first bullet), so it is never stranded
+        private void heading(String text, float keepWithNext) throws IOException {
             Face bold = face(Style.BOLD);
             float lineHeight = bold.lineHeight(HEADING_PT);
-            float block = BEFORE_HEADING + lineHeight + RULE_GAP + RULE_WIDTH + AFTER_HEADING
-                    + 2 * face(Style.REGULAR).lineHeight(BODY_PT);
+            float block = BEFORE_HEADING + lineHeight + RULE_GAP + RULE_WIDTH + AFTER_HEADING + keepWithNext;
             ensureSpace(block);
             space(BEFORE_HEADING);
 
@@ -417,14 +445,14 @@ public class ResumePdfExporter {
 
         // left text and right-aligned text on one line (title + dates, degree + location); the left side
         // wraps inside the room the right side leaves
-        private void splitLine(Face leftFace, String left, Face rightFace, String right, float before)
-                throws IOException {
+        // `keepWithNext`: height of what must stay on the same page below this line
+        private void splitLine(Face leftFace, String left, Face rightFace, String right, float before,
+                float keepWithNext) throws IOException {
             float lineHeight = leftFace.lineHeight(BODY_PT);
-            ensureSpace(before + lineHeight * 2);
+            List<String> leftLines = splitLeftLines(leftFace, left, rightFace, right);
+            ensureSpace(before + leftLines.size() * lineHeight + keepWithNext);
             space(before);
             float rightWidth = right.isEmpty() ? 0 : width(rightFace, right, BODY_PT);
-            float leftRoom = right.isEmpty() ? TEXT_WIDTH : Math.max(TEXT_WIDTH * 0.4f, TEXT_WIDTH - rightWidth - DATE_GAP);
-            List<String> leftLines = left.isEmpty() ? List.of("") : wrap(leftFace, left, BODY_PT, leftRoom);
             for (int i = 0; i < leftLines.size(); i++) {
                 ensureSpace(lineHeight);
                 float baseline = y + leftFace.ascentFactor * BODY_PT;
@@ -436,11 +464,34 @@ public class ResumePdfExporter {
             }
         }
 
+        private List<String> splitLeftLines(Face leftFace, String left, Face rightFace, String right)
+                throws IOException {
+            float rightWidth = right.isEmpty() ? 0 : width(rightFace, right, BODY_PT);
+            float leftRoom = right.isEmpty() ? TEXT_WIDTH : Math.max(TEXT_WIDTH * 0.4f, TEXT_WIDTH - rightWidth - DATE_GAP);
+            return left.isEmpty() ? List.of("") : wrap(leftFace, left, BODY_PT, leftRoom);
+        }
+
+        private float splitLineHeight(Face leftFace, String left, Face rightFace, String right) throws IOException {
+            return splitLeftLines(leftFace, left, rightFace, right).size() * leftFace.lineHeight(BODY_PT);
+        }
+
+        private float textHeight(Face face, String text, float width) throws IOException {
+            return wrap(face, text, BODY_PT, width).size() * face.lineHeight(BODY_PT);
+        }
+
+        private float firstBulletHeight(List<String> bullets) throws IOException {
+            return bullets.isEmpty() ? 0
+                    : FIRST_BULLET + textHeight(face(Style.REGULAR), bullets.get(0), TEXT_WIDTH - BULLET_TEXT_X);
+        }
+
         private void bulletList(List<String> items) throws IOException {
             Face regular = face(Style.REGULAR);
             for (int i = 0; i < items.size(); i++) {
-                space(i == 0 ? FIRST_BULLET : BETWEEN_BULLETS);
+                float before = i == 0 ? FIRST_BULLET : BETWEEN_BULLETS;
                 List<String> lines = wrap(regular, items.get(i), BODY_PT, TEXT_WIDTH - BULLET_TEXT_X);
+                // all lines of one bullet on the same page (a bullet taller than a page still flows)
+                ensureSpace(before + lines.size() * regular.lineHeight(BODY_PT));
+                space(before);
                 for (int j = 0; j < lines.size(); j++) {
                     ensureSpace(regular.lineHeight(BODY_PT));
                     float baseline = y + regular.ascentFactor * BODY_PT;
@@ -511,14 +562,42 @@ public class ResumePdfExporter {
             text.codePoints().forEach(cp -> {
                 if (cp == '\t' || cp == '\n' || cp == '\r' || cp == 0xA0) {
                     out.append(' ');
-                } else if (!Character.isISOControl(cp)) {
+                } else if (!Character.isISOControl(cp) && !invisible(cp)) {
                     out.appendCodePoint(cp);
                 }
             });
             return out.toString();
         }
 
-        // split text into runs the font (or its fallback) can draw; anything neither has becomes '?'
+        // zero-width joiners, soft hyphens, variation selectors: nothing to draw
+        private static boolean invisible(int cp) {
+            return Character.getType(cp) == Character.FORMAT || (cp >= 0xFE00 && cp <= 0xFE0F);
+        }
+
+        // Refuse up front instead of printing '?': the fonts here have no glyphs for it, and PDFBox can't
+        // shape Devanagari so that text stays extractable (conjuncts come out as junk for ATS parsers).
+        private void rejectUnrenderable(BuilderExportRequest request) {
+            for (Map.Entry<String, String> field : BuilderFields.texts(request).entrySet()) {
+                String text = printable(field.getValue());
+                int bad = text.codePoints().filter(cp -> !Character.isWhitespace(cp) && !drawable(cp))
+                        .findFirst().orElse(-1);
+                if (bad >= 0) {
+                    throw new PdfTextNotSupportedException(BuilderFields.label(field.getKey()), field.getValue(), bad);
+                }
+            }
+        }
+
+        private boolean drawable(int cp) {
+            for (Face face : faces.values()) {
+                if (!face.covers(cp) && (face.fallback() == null || !face.fallback().covers(cp))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // split text into runs the font (or its fallback) can draw; rejectUnrenderable has already refused
+        // anything neither has, so the '?' below is only a last resort
         private static List<Chunk> chunks(Face face, String text) {
             List<Chunk> chunks = new ArrayList<>();
             Face current = null;

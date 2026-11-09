@@ -134,8 +134,11 @@ public class ResumeDocxExporter {
                     case EXPERIENCE -> writeExperience(request.experience());
                     case EDUCATION -> writeEducation(request.education());
                     case PROJECTS -> writeProjects(request.projects());
-                    case SKILLS -> writeSkills(request.skills());
-                    case CERTIFICATIONS -> writeCertifications(request.certifications());
+                    case HIGHLIGHTS -> writeList("Highlights", request.highlights());
+                    case ACHIEVEMENTS -> writeList("Achievements", request.achievements());
+                    case SKILLS -> writeLine("Skills", request.skills());
+                    case LANGUAGES -> writeLine("Languages", request.languages());
+                    case CERTIFICATIONS -> writeList("Certifications", request.certifications());
                 }
             }
         }
@@ -261,7 +264,9 @@ public class ResumeDocxExporter {
                 String title = has(entry.title()) ? entry.title() : entry.company();
                 titleLine(title, entry.dates(), before);
                 if (has(entry.title()) && has(entry.company())) {
-                    run(paragraph(0, 0), clean(entry.company()), BODY_PT).setItalic(true);
+                    XWPFParagraph company = paragraph(0, 0);
+                    company.setKeepNext(true); // stays with the first bullet
+                    run(company, clean(entry.company()), BODY_PT).setItalic(true);
                 }
                 bulletList(bullets(entry.description()));
             }
@@ -282,6 +287,7 @@ public class ResumeDocxExporter {
                 boolean degreeLine = has(entry.institution()) && has(entry.degree());
                 if (degreeLine || has(entry.location())) {
                     XWPFParagraph line = paragraph(0, 0);
+                    line.setKeepNext(true);
                     rightTab(line);
                     if (degreeLine) {
                         run(line, clean(entry.degree()), BODY_PT).setItalic(true);
@@ -307,27 +313,31 @@ public class ResumeDocxExporter {
             for (int i = 0; i < entries.size(); i++) {
                 ProjectEntry entry = entries.get(i);
                 if (has(entry.name())) {
-                    run(paragraph(i == 0 ? 0 : BETWEEN_ENTRIES, 0), clean(entry.name()), BODY_PT).setBold(true);
+                    XWPFParagraph name = paragraph(i == 0 ? 0 : BETWEEN_ENTRIES, 0);
+                    name.setKeepNext(true);
+                    run(name, clean(entry.name()), BODY_PT).setBold(true);
                 }
                 bulletList(bullets(entry.description()));
             }
         }
 
-        private void writeSkills(List<String> skills) {
-            List<String> values = skills.stream().filter(ResumeDocxExporter::has).map(String::strip).toList();
+        // a heading plus one comma-separated line (Skills, Languages)
+        private void writeLine(String title, List<String> items) {
+            List<String> values = items.stream().filter(ResumeDocxExporter::has).map(String::strip).toList();
             if (values.isEmpty()) {
                 return;
             }
-            heading("Skills");
+            heading(title);
             run(paragraph(0, 0), String.join(", ", values), BODY_PT);
         }
 
-        private void writeCertifications(List<String> certifications) {
-            List<String> values = certifications.stream().filter(ResumeDocxExporter::has).map(String::strip).toList();
+        // a heading plus one bullet per non-blank item (Highlights, Achievements, Certifications)
+        private void writeList(String title, List<String> items) {
+            List<String> values = items.stream().filter(ResumeDocxExporter::has).map(String::strip).toList();
             if (values.isEmpty()) {
                 return;
             }
-            heading("Certifications");
+            heading(title);
             bulletList(values);
         }
 
@@ -366,6 +376,8 @@ public class ResumeDocxExporter {
                 XWPFParagraph paragraph = paragraph(i == 0 ? 2 * 20 : BETWEEN_BULLETS, 0);
                 paragraph.setNumID(bulletNumId());
                 paragraph.setNumILvl(BigInteger.ZERO);
+                // a bullet never splits across pages
+                paragraph.getCTP().getPPr().addNewKeepLines();
                 run(paragraph, items.get(i), BODY_PT);
             }
         }
