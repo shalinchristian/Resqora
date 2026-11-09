@@ -49,6 +49,12 @@ body {
   font-feature-settings: "cv11", "ss01";
 }
 input, textarea { font-size: 16px; }
+/* resume builder on phones: 16px text so iOS doesn't zoom, taller inputs, and fields scroll clear of the bottom bar */
+@media (max-width: 1023px) {
+  .rb input, .rb textarea { font-size: 16px !important; }
+  .rb input:not([type=file]):not([type=checkbox]) { height: 48px; }
+  .rb input, .rb textarea, .rb select { scroll-margin-bottom: 120px; scroll-margin-top: 80px; }
+}
 :focus:not(:focus-visible) { outline: none; }
 :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 ::selection { background: color-mix(in srgb, var(--color-accent) 30%, transparent); }
