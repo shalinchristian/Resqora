@@ -23,7 +23,7 @@ function AutoGrow({ value, inputRef, className = '', ...props }) {
  * export payload don't change shape. Enter adds a row, Backspace on an empty row
  * removes it, and pasting several lines splits them into rows.
  */
-export function BulletList({ label, value, onChange, hint, placeholder = 'Add a point', addLabel = 'Add bullet', max = 20 }) {
+export function BulletList({ label, value, onChange, hint, placeholder = 'Add a point', addLabel = 'Add bullet', max = 20, maxLength = 200 }) {
   const rows = (value || '').split('\n')
   const items = rows.length ? rows : ['']
   const refs = useRef([])
@@ -90,10 +90,12 @@ export function BulletList({ label, value, onChange, hint, placeholder = 'Add a 
     const el = e.currentTarget
     const before = el.value.slice(0, el.selectionStart)
     const after = el.value.slice(el.selectionEnd)
-    const first = before + pasted[0]
+    const cut = (str) => str.slice(0, maxLength)
+    const first = cut(before + pasted[0])
     const rest = pasted.slice(1)
     if (rest.length) rest[rest.length - 1] += after
-    else return setRow(i, first + after)
+    else return setRow(i, cut(before + pasted[0] + after))
+    for (let k = 0; k < rest.length; k++) rest[k] = cut(rest[k])
     const next = [...items]
     next[i] = first
     const room = Math.max(0, max - items.length)
@@ -114,6 +116,7 @@ export function BulletList({ label, value, onChange, hint, placeholder = 'Add a 
               value={text}
               placeholder={i === 0 ? placeholder : ''}
               aria-label={`${label} ${i + 1}`}
+              maxLength={maxLength}
               onChange={(e) => setRow(i, e.target.value.replace(/\r?\n/g, ' '))}
               onKeyDown={onKeyDown(i)}
               onPaste={onPaste(i)}
@@ -138,7 +141,7 @@ export function BulletList({ label, value, onChange, hint, placeholder = 'Add a 
 }
 
 /** Skills as chips. Type to get suggestions from the built-in list; + or Enter adds one. */
-export function SkillsInput({ label = 'Skills', value, onChange, hint }) {
+export function SkillsInput({ label = 'Skills', value, onChange, hint, max = 100 }) {
   const skills = splitList(value)
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(false)
@@ -161,7 +164,7 @@ export function SkillsInput({ label = 'Skills', value, onChange, hint }) {
   const save = (list) => onChange(list.join('\n'))
   const add = (name) => {
     const n = name.trim().replace(/\s*·\s*/g, ' ')
-    if (!n || skills.some((s) => s.toLowerCase() === n.toLowerCase())) return
+    if (!n || skills.length >= max || skills.some((s) => s.toLowerCase() === n.toLowerCase())) return
     save([...skills, n]); setQ(''); inputRef.current?.focus()
   }
   const removeAt = (i) => save(skills.filter((_, j) => j !== i))
@@ -197,7 +200,8 @@ export function SkillsInput({ label = 'Skills', value, onChange, hint }) {
           onChange={(e) => { setQ(e.target.value); setOpen(true) }}
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
-          placeholder={skills.length ? 'Add another skill' : 'Start typing a skill, like Java or Excel'}
+          maxLength={200} disabled={skills.length >= max}
+          placeholder={skills.length >= max ? `That's the limit of ${max} skills` : skills.length ? 'Add another skill' : 'Start typing a skill, like Java or Excel'}
           autoComplete="off" name="resqora-skill-search" role="combobox" aria-expanded={showList} aria-autocomplete="list"
           className="w-full h-10 rounded-lg border border-line bg-surface px-3 text-sm outline-none transition focus:border-accent focus:ring-4 focus:ring-[var(--glow)]"
         />

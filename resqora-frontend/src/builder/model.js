@@ -23,7 +23,7 @@ const uid = () => `item-${nextId++}`
 export const lines = (text) => (text || '').split(/\r?\n/).map((s) => s.replace(/^[•\-\u2013\u2014]\s*/, '').trim()).filter(Boolean)
 
 const emptyJob = () => ({ id: uid(), title: '', company: '', location: '', dates: '', bullets: '' })
-const emptySchool = () => ({ id: uid(), degree: '', school: '', dates: '', gpa: '', details: '' })
+const emptySchool = () => ({ id: uid(), degree: '', school: '', location: '', dates: '', gpa: '', details: '' })
 const emptyProject = () => ({ id: uid(), name: '', dates: '', stack: '', bullets: '' })
 
 export function emptyDraft() {
@@ -67,35 +67,44 @@ function bulletsFromDescription(text) {
   return text.trim()
 }
 
+// Same limits as the backend's BuilderExportRequest, so a prefilled or pasted draft never 400s on download.
+export const LIMITS = { skills: 100, highlights: 20, certifications: 30, achievements: 20, languages: 20, experience: 30, education: 20, projects: 30, bullets: 18, item: 200 }
+const cut = (s, n = LIMITS.item) => (s || '').trim().slice(0, n)
+const capLines = (text, n, len = LIMITS.item) => lines(text).map((l) => l.slice(0, len)).slice(0, n)
+
 export function fromParsed(parsed) {
   const draft = emptyDraft()
   if (!parsed) return draft
-  draft.contact.fullName = parsed.name || ''
-  draft.contact.email = parsed.email || ''
-  draft.contact.phone = parsed.phone || ''
-  draft.contact.city = parsed.location || ''
-  draft.skills = (parsed.skills || []).filter(Boolean).join('\n')
-  draft.certifications = (parsed.certifications || []).filter(Boolean).join('\n')
-  const jobs = (parsed.experience || []).map((e) => ({
+  draft.contact.fullName = cut(parsed.name)
+  draft.contact.email = cut(parsed.email, 320)
+  draft.contact.phone = cut(parsed.phone, 50)
+  draft.contact.city = cut(parsed.location)
+  const seen = new Set()
+  draft.skills = (parsed.skills || []).map((x) => cut(x)).filter((x) => x && !seen.has(x.toLowerCase()) && seen.add(x.toLowerCase()))
+    .slice(0, LIMITS.skills).join('\n')
+  draft.certifications = (parsed.certifications || []).map((x) => cut(x)).filter(Boolean).slice(0, LIMITS.certifications).join('\n')
+  const bullets = (text) => capLines(bulletsFromDescription(text), LIMITS.bullets).join('\n')
+  const jobs = (parsed.experience || []).slice(0, LIMITS.experience).map((e) => ({
     ...emptyJob(),
-    title: e.title || '',
-    company: e.company || '',
-    dates: e.dates || '',
-    bullets: bulletsFromDescription(e.description),
+    title: cut(e.title),
+    company: cut(e.company, 120),
+    dates: cut(e.dates),
+    bullets: bullets(e.description),
   }))
   draft.experience = jobs.length ? jobs : [emptyJob()]
-  const schools = (parsed.education || []).map((e) => ({
+  const schools = (parsed.education || []).slice(0, LIMITS.education).map((e) => ({
     ...emptySchool(),
-    degree: e.degree || '',
-    school: e.institution || '',
-    dates: e.dates || '',
-    details: e.details || '',
+    degree: cut(e.degree),
+    school: cut(e.institution),
+    location: cut(e.location),
+    dates: cut(e.dates),
+    details: bullets(e.details),
   }))
   draft.education = schools.length ? schools : [emptySchool()]
-  const projects = (parsed.projects || []).map((p) => ({
+  const projects = (parsed.projects || []).slice(0, LIMITS.projects).map((p) => ({
     ...emptyProject(),
-    name: p.name || '',
-    bullets: bulletsFromDescription(p.description),
+    name: cut(p.name, 120),
+    bullets: bullets(p.description),
   }))
   draft.projects = projects.length ? projects : [emptyProject()]
   return draft
@@ -117,21 +126,21 @@ export function toPayload(draft) {
     github: (c.github || '').trim(),
     summary: (draft.summary || '').trim(),
     // split only on new lines and · so "AWS (EC2, S3, RDS)" stays one skill
-    skills: splitList(draft.skills),
-    highlights: lines(draft.highlights),
+    skills: splitList(draft.skills).slice(0, LIMITS.skills),
+    highlights: capLines(draft.highlights, LIMITS.highlights),
     experience: (draft.experience || []).map((j) => ({
       company: [j.company, j.location].map((s) => (s || '').trim()).filter(Boolean).join(', '),
       title: (j.title || '').trim(),
       dates: (j.dates || '').trim(),
       description: lines(j.bullets).join('\n'),
-    })).filter(filled),
+    })).filter(filled).slice(0, LIMITS.experience),
     education: (draft.education || []).map((e) => ({
       institution: (e.school || '').trim(),
       degree: (e.degree || '').trim(),
       dates: (e.dates || '').trim(),
       details: [e.gpa ? `CGPA ${e.gpa.trim()}` : '', ...lines(e.details)].filter(Boolean).join('\n'),
-      location: '',
-    })).filter(filled),
+      location: (e.location || '').trim(),
+    })).filter(filled).slice(0, LIMITS.education),
     projects: (draft.projects || []).map((p) => {
       const name = (p.name || '').trim()
       const dates = (p.dates || '').trim()
@@ -140,10 +149,10 @@ export function toPayload(draft) {
         name: name && dates ? `${name} (${dates})` : name,
         description: bits.join('\n'),
       }
-    }).filter(filled),
-    certifications: lines(draft.certifications),
-    achievements: lines(draft.achievements),
-    languages: splitList(draft.languages, true),
+    }).filter(filled).slice(0, LIMITS.projects),
+    certifications: capLines(draft.certifications, LIMITS.certifications),
+    achievements: capLines(draft.achievements, LIMITS.achievements),
+    languages: splitList(draft.languages, true).map((l) => l.slice(0, LIMITS.item)).slice(0, LIMITS.languages),
   }
 }
 
@@ -153,14 +162,18 @@ export function splitList(text, commas = false) {
 }
 
 // Draft autosave, so a refresh or an expired session doesn't wipe the form.
+// The draft is tagged with the signed-in user's id and only restored for that same user,
+// so someone else logging in on the same browser never sees it.
 const DRAFT_KEY = 'resqora_builder_draft'
-export function saveDraft(step, draft) {
-  try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ step, draft, savedAt: Date.now() })) } catch { /* storage full or blocked */ }
+export function saveDraft(step, draft, userId) {
+  if (userId == null) return
+  try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ userId, step, draft, savedAt: Date.now() })) } catch { /* storage full or blocked */ }
 }
-export function loadDraft() {
+export function loadDraft(userId) {
   try {
     const saved = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null')
     if (!saved || !saved.draft || !saved.draft.contact) return null
+    if (userId == null || saved.userId !== userId) { clearDraft(); return null }
     const base = emptyDraft()
     const d = { ...base, ...saved.draft, contact: { ...base.contact, ...saved.draft.contact } }
     // give restored rows fresh ids so new rows never collide with them
