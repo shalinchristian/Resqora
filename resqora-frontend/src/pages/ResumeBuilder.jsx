@@ -8,7 +8,7 @@ import { BulletList, SkillsInput } from '../builder/inputs.jsx'
 import {
   TEMPLATES, emptyDraft, fromParsed, toPayload, fileBaseName,
   addJob, addSchool, addProject, moveItem,
-  saveDraft, loadDraft, clearDraft, isEmptyDraft,
+  saveDraft, loadDraft, clearDraft, isEmptyDraft, LIMITS,
 } from '../builder/model.js'
 
 const STEPS = [
@@ -116,7 +116,7 @@ function Area({ label, value, onChange, hint, rows = 4, maxLength = 2000 }) {
   )
 }
 
-function CardList({ title, note, items, onMove, onRemove, onAdd, addLabel, children }) {
+function CardList({ title, note, items, onMove, onRemove, onAdd, addLabel, max, children }) {
   return (
     <section className="bg-surface border border-line rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
       <header className="px-5 sm:px-6 pt-5 pb-1 flex items-baseline gap-3">
@@ -140,7 +140,9 @@ function CardList({ title, note, items, onMove, onRemove, onAdd, addLabel, child
             {children(item, i)}
           </div>
         ))}
-        <Button type="button" variant="ghost" onClick={onAdd}>{addLabel}</Button>
+        {max && items.length >= max
+          ? <p className="text-xs text-muted">That's the limit of {max}.</p>
+          : <Button type="button" variant="ghost" onClick={onAdd}>{addLabel}</Button>}
       </div>
     </section>
   )
@@ -362,7 +364,7 @@ export default function ResumeBuilder() {
             <CardList title="Experience" note="Use the arrows to reorder" items={draft.experience}
               onMove={(i, dir) => setDraft((d) => ({ ...d, experience: moveItem(d.experience, i, dir) }))}
               onRemove={(i) => setDraft((d) => ({ ...d, experience: d.experience.length > 1 ? d.experience.filter((_, j) => j !== i) : d.experience }))}
-              onAdd={() => setDraft(addJob)} addLabel="+ Add another job">
+              onAdd={() => setDraft(addJob)} max={LIMITS.experience} addLabel="+ Add another job">
               {(job, i) => (
                 <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
                   <Field label="Title" value={job.title} onChange={(v) => setDraft((d) => ({ ...d, experience: d.experience.map((x, j) => j === i ? { ...x, title: v } : x) }))} />
@@ -377,7 +379,7 @@ export default function ResumeBuilder() {
             <CardList title="Education" items={draft.education}
               onMove={(i, dir) => setDraft((d) => ({ ...d, education: moveItem(d.education, i, dir) }))}
               onRemove={(i) => setDraft((d) => ({ ...d, education: d.education.length > 1 ? d.education.filter((_, j) => j !== i) : d.education }))}
-              onAdd={() => setDraft(addSchool)} addLabel="+ Add another school">
+              onAdd={() => setDraft(addSchool)} max={LIMITS.education} addLabel="+ Add another school">
               {(school, i) => (
                 <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
                   <Field label="Degree" value={school.degree} onChange={(v) => setDraft((d) => ({ ...d, education: d.education.map((x, j) => j === i ? { ...x, degree: v } : x) }))} />
@@ -393,7 +395,7 @@ export default function ResumeBuilder() {
             <CardList title="Projects" items={draft.projects}
               onMove={(i, dir) => setDraft((d) => ({ ...d, projects: moveItem(d.projects, i, dir) }))}
               onRemove={(i) => setDraft((d) => ({ ...d, projects: d.projects.length > 1 ? d.projects.filter((_, j) => j !== i) : d.projects }))}
-              onAdd={() => setDraft(addProject)} addLabel="+ Add another project">
+              onAdd={() => setDraft(addProject)} max={LIMITS.projects} addLabel="+ Add another project">
               {(project, i) => (
                 <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
                   <Field label="Name" maxLength={120} value={project.name} onChange={(v) => setDraft((d) => ({ ...d, projects: d.projects.map((x, j) => j === i ? { ...x, name: v } : x) }))} />
@@ -407,8 +409,8 @@ export default function ResumeBuilder() {
             <section className="bg-surface border border-line rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
               <h2 className="text-[15px] font-semibold tracking-tight px-5 sm:px-6 pt-5">More</h2>
               <div className="px-5 sm:px-6 pb-5 sm:pb-6 pt-4 grid grid-cols-1 gap-3.5">
-                <BulletList label="Certifications" value={draft.certifications} onChange={(v) => setField('certifications', v)} placeholder="Google Data Analytics Certificate" addLabel="Add certification" hint="Optional." />
-                <Field label="Languages" value={draft.languages} onChange={(v) => setField('languages', v)} placeholder="English, Hindi" />
+                <BulletList label="Certifications" value={draft.certifications} onChange={(v) => setField('certifications', v)} placeholder="Google Data Analytics Certificate" addLabel="Add certification" max={LIMITS.certifications} hint="Optional." />
+                <Field label="Languages" value={draft.languages} onChange={(v) => setField('languages', v)} placeholder="English, Hindi" hint="Separate with commas. Up to 20." />
                 <BulletList label="Achievements" value={draft.achievements} onChange={(v) => setField('achievements', v)} placeholder="Winner, Smart India Hackathon 2025" addLabel="Add achievement" hint="Optional. Up to 20." />
               </div>
             </section>
