@@ -166,27 +166,27 @@ class BuilderExportIntegrationTest {
 
     @Test
     void overlongHeadlineIs400() throws Exception {
-        overlong("headline", 201);
+        overlong("headline", 201, "Headline is too long (201 characters, max 200)");
     }
 
     @Test
     void overlongLinkedinIs400() throws Exception {
-        overlong("linkedin", 501);
+        overlong("linkedin", 501, "LinkedIn is too long (501 characters, max 500)");
     }
 
     @Test
     void overlongGithubIs400() throws Exception {
-        overlong("github", 501);
+        overlong("github", 501, "GitHub is too long (501 characters, max 500)");
     }
 
-    private void overlong(String field, int length) throws Exception {
+    private void overlong(String field, int length, String message) throws Exception {
         mockMvc.perform(post("/api/builder/export")
                         .header("Authorization", token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"templateId\":\"classic\",\"name\":\"Joel Thomas\",\"" + field + "\":\""
                                 + "a".repeat(length) + "\"}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value(containsString(field)));
+                .andExpect(jsonPath("$.message").value(containsString(message)));
     }
 
     @Test

@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { api, getToken, setToken, clearToken } from './api.js'
+import { clearDraft } from './builder/model.js'
 
 const AuthContext = createContext(null)
 
@@ -31,7 +32,9 @@ export function AuthProvider({ children }) {
     setUser(await api.me())
   }
 
-  const logout = () => { clearToken(); setUser(null) }
+  // logging out clears the builder draft so it doesn't stay on a shared computer.
+  // an expired session keeps it, so you can continue after logging back in
+  const logout = () => { clearToken(); clearDraft(); setUser(null) }
 
   return (
     <AuthContext.Provider value={{ user, setUser, loading, login, loginWithToken, logout }}>

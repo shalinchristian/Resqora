@@ -69,6 +69,12 @@ export const api = {
   },
   deleteResume: (id) => request(`/api/resumes/${id}`, { method: 'DELETE' }),
   parsed: (id) => request(`/api/resumes/${id}/parsed`),
+  // builder prefill: parses the file and returns the json, nothing gets saved
+  parseOnly: (file) => {
+    const form = new FormData()
+    form.append('file', file)
+    return request('/api/builder/parse', { method: 'POST', body: form, isForm: true })
+  },
   analysis: (id) => request(`/api/resumes/${id}/analysis`),
   match: (id, jobDescription) => request(`/api/resumes/${id}/match`, { method: 'POST', body: { jobDescription } }),
   summary: (id) => request(`/api/resumes/${id}/summary`),

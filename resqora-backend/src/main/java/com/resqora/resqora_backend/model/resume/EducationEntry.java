@@ -1,7 +1,15 @@
 package com.resqora.resqora_backend.model.resume;
 
-// location: the right-aligned "City, State" next to the institution name, when the resume has one
-public record EducationEntry(String institution, String degree, String dates, String details, String location) {
+import jakarta.validation.constraints.Size;
+
+// location is the right-aligned "City, State" next to the institution, if the resume has one.
+// size limits only kick in where this is validated (builder export body), the parser doesn't care
+public record EducationEntry(
+        @Size(max = 200) String institution,
+        @Size(max = 200) String degree,
+        @Size(max = 200) String dates,
+        @Size(max = 4000) String details,
+        @Size(max = 200) String location) {
 
     public EducationEntry(String institution, String degree, String dates, String details) {
         this(institution, degree, dates, details, null);

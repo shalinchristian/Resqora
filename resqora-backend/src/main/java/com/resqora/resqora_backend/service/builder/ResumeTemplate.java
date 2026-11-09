@@ -6,15 +6,17 @@ import java.util.List;
 // the five builder formats. a template only picks the section order and how the name/contact block looks,
 // they all share the same single column font sizes and spacing
 public enum ResumeTemplate {
+    // Highlights comes after Summary (after Skills on Combination), Achievements after Certifications
+    // and Languages is always last. empty sections are skipped
     CLASSIC("classic", HeaderStyle.LEFT, "Calibri", List.of(
-            Section.SUMMARY, Section.EXPERIENCE, Section.EDUCATION, Section.PROJECTS, Section.SKILLS,
-            Section.CERTIFICATIONS)),
+            Section.SUMMARY, Section.HIGHLIGHTS, Section.EXPERIENCE, Section.EDUCATION, Section.PROJECTS,
+            Section.SKILLS, Section.CERTIFICATIONS, Section.ACHIEVEMENTS, Section.LANGUAGES)),
     COMBINATION("combination", HeaderStyle.LEFT, "Calibri", List.of(
-            Section.SUMMARY, Section.SKILLS, Section.EXPERIENCE, Section.PROJECTS, Section.EDUCATION,
-            Section.CERTIFICATIONS)),
+            Section.SUMMARY, Section.SKILLS, Section.HIGHLIGHTS, Section.EXPERIENCE, Section.PROJECTS,
+            Section.EDUCATION, Section.CERTIFICATIONS, Section.ACHIEVEMENTS, Section.LANGUAGES)),
     CAMPUS("campus", HeaderStyle.LEFT, "Calibri", List.of(
-            Section.SUMMARY, Section.EDUCATION, Section.PROJECTS, Section.EXPERIENCE, Section.SKILLS,
-            Section.CERTIFICATIONS)),
+            Section.SUMMARY, Section.HIGHLIGHTS, Section.EDUCATION, Section.PROJECTS, Section.EXPERIENCE,
+            Section.SKILLS, Section.CERTIFICATIONS, Section.ACHIEVEMENTS, Section.LANGUAGES)),
     // serif, and only the name/contact lines are centered (centered body lines confuse parsers)
     CENTERED("centered", HeaderStyle.CENTERED, "Times New Roman", CLASSIC.sections),
     // name/contact are real text on a shaded paragraph, not a table or an image
@@ -22,7 +24,9 @@ public enum ResumeTemplate {
 
     public enum HeaderStyle { LEFT, CENTERED, BAND }
 
-    public enum Section { SUMMARY, EXPERIENCE, EDUCATION, PROJECTS, SKILLS, CERTIFICATIONS }
+    public enum Section {
+        SUMMARY, HIGHLIGHTS, EXPERIENCE, EDUCATION, PROJECTS, SKILLS, CERTIFICATIONS, ACHIEVEMENTS, LANGUAGES
+    }
 
     private final String id;
     private final HeaderStyle headerStyle;

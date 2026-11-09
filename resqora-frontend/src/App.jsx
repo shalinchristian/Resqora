@@ -22,8 +22,9 @@ function HomeOrDashboard() {
 
 function Protected({ children }) {
   const { user, loading } = useAuth()
+  const location = useLocation()
   if (loading) return <p className="text-muted">Loading...</p>
-  return user ? children : <Navigate to="/login" replace />
+  return user ? children : <Navigate to="/login" replace state={{ from: location.pathname }} />
 }
 
 function ThemeToggle() {

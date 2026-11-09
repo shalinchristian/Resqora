@@ -19,14 +19,15 @@ export default function Login() {
     return !!e
   })
 
-  if (user) return <Navigate to="/" replace />
+  const back = typeof state?.from === 'string' && state.from.startsWith('/') ? state.from : '/'
+  if (user) return <Navigate to={back} replace />
 
   const onSubmit = async (e) => {
     e.preventDefault()
     setError(''); setBusy(true)
     try {
       await login(email, password)
-      navigate('/')
+      navigate(back)
     } catch (err) {
       if (err.status === 403 || err.code === 'EMAIL_NOT_VERIFIED') {
         navigate('/verify-email', { state: { email: email.trim().toLowerCase() } })
