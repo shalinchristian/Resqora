@@ -90,10 +90,12 @@ export function BulletList({ label, value, onChange, hint, placeholder = 'Add a 
     const el = e.currentTarget
     const before = el.value.slice(0, el.selectionStart)
     const after = el.value.slice(el.selectionEnd)
-    const first = before + pasted[0]
+    const cut = (str) => str.slice(0, maxLength)
+    const first = cut(before + pasted[0])
     const rest = pasted.slice(1)
     if (rest.length) rest[rest.length - 1] += after
-    else return setRow(i, first + after)
+    else return setRow(i, cut(before + pasted[0] + after))
+    for (let k = 0; k < rest.length; k++) rest[k] = cut(rest[k])
     const next = [...items]
     next[i] = first
     const room = Math.max(0, max - items.length)
