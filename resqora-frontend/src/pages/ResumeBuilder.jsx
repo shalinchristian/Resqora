@@ -6,7 +6,7 @@ import { Button, ErrorBox, Input, TextArea } from '../components/ui.jsx'
 import ResumeDocument from '../builder/ResumeDocument.jsx'
 import { BulletList, SkillsInput } from '../builder/inputs.jsx'
 import {
-  TEMPLATES, emptyDraft, fromParsed, toPayload, fileBaseName,
+  TEMPLATES, emptyDraft, prefillDraft, toPayload, fileBaseName,
   addJob, addSchool, addProject, moveItem,
   saveDraft, loadDraft, clearDraft, isEmptyDraft, LIMITS,
 } from '../builder/model.js'
@@ -156,6 +156,7 @@ export default function ResumeBuilder() {
   const [draft, setDraft] = useState(() => (restored ? restored.draft : emptyDraft()))
   const [tab, setTab] = useState('edit')
   const [nameError, setNameError] = useState('')
+  const [shortened, setShortened] = useState(false)
   const nameRef = useRef(null)
   const payload = toPayload(draft)
   const hasSaved = !isEmptyDraft(draft)
@@ -188,7 +189,9 @@ export default function ResumeBuilder() {
     setBusy('prefill'); setError('')
     try {
       const parsed = await api.parsed(id)
-      setDraft((d) => ({ ...fromParsed(parsed), templateId: d.templateId }))
+      const { draft: next, shortened } = prefillDraft(parsed)
+      setDraft((d) => ({ ...next, templateId: d.templateId }))
+      setShortened(shortened)
       setStep('format')
     } catch (e) { setError(e.message) }
     finally { setBusy('') }
@@ -201,7 +204,9 @@ export default function ResumeBuilder() {
     setBusy('prefill'); setError('')
     try {
       const parsed = await api.parseOnly(file)
-      setDraft((d) => ({ ...fromParsed(parsed), templateId: d.templateId }))
+      const { draft: next, shortened } = prefillDraft(parsed)
+      setDraft((d) => ({ ...next, templateId: d.templateId }))
+      setShortened(shortened)
       setStep('format')
     } catch (e) { setError(e.message) }
     finally { setBusy('') }
@@ -245,7 +250,7 @@ export default function ResumeBuilder() {
                 <p className="text-sm text-muted mt-1">{payload.name || 'Your draft'} is saved on this device.</p>
               </div>
               <div className="flex gap-2 shrink-0">
-                <Button variant="ghost" onClick={() => { clearDraft(); setDraft(emptyDraft()) }}>Start over</Button>
+                <Button variant="ghost" onClick={() => { clearDraft(); setDraft(emptyDraft()); setShortened(false) }}>Start over</Button>
                 <Button onClick={() => setStep('form')}>Continue</Button>
               </div>
             </div>
@@ -316,6 +321,12 @@ export default function ResumeBuilder() {
         <div>
           <h1 className="font-serif text-3xl font-medium tracking-tight">Your details</h1>
           <p className="text-sm text-muted mt-2 mb-5 lg:mb-7">Type on the left and the page updates on the right. Empty sections are left off the file. Your draft saves on this device as you type.</p>
+          {shortened && (
+            <p role="status" className="flex items-start justify-between gap-3 mb-5 rounded-lg border border-line bg-sunken px-3.5 py-2.5 text-sm">
+              <span>Some text from your file was shortened to fit the limits. Check your bullets before you download.</span>
+              <button type="button" onClick={() => setShortened(false)} aria-label="Dismiss" className="shrink-0 text-faint hover:text-ink">×</button>
+            </p>
+          )}
           <div className="lg:hidden grid grid-cols-2 p-1 mb-5 rounded-lg bg-sunken border border-line text-sm font-medium" role="tablist">
             {['edit', 'preview'].map((k) => (
               <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
