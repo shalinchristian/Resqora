@@ -58,10 +58,10 @@ export function Input({ label, type, hint, ...props }) {
   )
 }
 
-export function TextArea(props) {
+export function TextArea({ className = '', ...props }) {
   return (
     <textarea
-      className="w-full rounded-lg border border-line bg-surface p-3 text-sm outline-none transition focus:border-accent focus:ring-4 focus:ring-[var(--glow)] resize-y"
+      className={`w-full rounded-lg border border-line bg-surface p-3 text-sm outline-none transition focus:border-accent focus:ring-4 focus:ring-[var(--glow)] resize-y ${className}`}
       {...props}
     />
   )
