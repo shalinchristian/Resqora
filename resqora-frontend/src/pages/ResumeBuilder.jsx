@@ -502,7 +502,7 @@ export default function ResumeBuilder() {
                 {existing.length > 0 && <span className="text-[13px] text-faint shrink-0">{picking ? 'Close' : 'Choose ›'}</span>}
               </button>
               {picking && existing.length > 0 && (
-                <ul className="border-t border-line px-2 sm:px-3 py-2">
+                <ul className="border-t border-line px-2 sm:px-3 py-2 max-h-[min(20rem,50vh)] overflow-y-auto overscroll-contain">
                   {existing.map((r) => (
                     <li key={r.id}>
                       <button type="button" disabled={busy === 'prefill'} onClick={() => loadFromResume(r.id)}
