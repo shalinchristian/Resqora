@@ -43,9 +43,9 @@ public class ResumeParser {
     private static final Pattern PHONE_LABEL_PATTERN = Pattern.compile("(?i)\\b(?:phone|mobile|mob|tel|ph|cell|contact)\\b");
     private static final Pattern DEGREE_PATTERN = Pattern.compile(
             "(?i)(?<![A-Za-z])(?:master(?:s)?|mca|mba|bachelor(?:s)?|bsc|b\\.sc|msc|m\\.sc|btech|b\\.tech|mtech|m\\.tech|"
-                    + "be|b\\.e|ms|m\\.s|bca|bcom|b\\.com|ba|ma|phd|ph\\.d|doctorate|associate|diploma)(?![A-Za-z])");
+                    + "be|b\\.e|ms|m\\.s|bca|bcom|b\\.com|ba|ma|phd|ph\\.d|doctorate|associate|diploma|class\\s+(?:xii|xi|x|12|10))(?![A-Za-z])");
     private static final Pattern INSTITUTION_PATTERN = Pattern.compile(
-            "(?i)\\b(?:university|institute|college|school|academy|iit|nit|iiit|iisc|polytechnic)\\b");
+            "(?i)\\b(?:university|institute|college|school|academy|vidyalaya|iit|nit|iiit|iisc|polytechnic)\\b");
 
     // Bullet glyphs seen in real resumes: - * • ▪ ◦ ➤ ► ▸ ‣ ⁃ ○ ● ■ □ ◆ ❖ ✓ ✔ → » – · and "1." / "a)" numbering
     private static final String BULLET = "(?:[-*•▪◦➤►▸▹‣⁃○●■□◆◇❖✓✔✗→»–·]|\\d{1,2}[.)](?=\\s)|[a-z][)](?=\\s))";
@@ -299,8 +299,8 @@ public class ResumeParser {
         return SkillDictionary.getDefault().canonical(skill).orElse(skill);
     }
 
-    // Splits the section into one entry per school: a pipe line is a whole entry; otherwise a new entry
-    // starts at an institution-looking line after an entry that already has dates, or at a second degree line.
+    // Inline fields form one school; stacked headers stay together until the next institution/degree.
+    // Dates belong to either header, never to an institution's name or a separate school.
     private List<EducationEntry> parseEducation(List<String> lines) {
         if (lines == null || lines.isEmpty()) {
             return List.of();
@@ -308,28 +308,29 @@ public class ResumeParser {
 
         List<EducationEntry> entries = new ArrayList<>();
         List<String> block = new ArrayList<>();
-        boolean blockHasDegree = false;
-        boolean blockHasDate = false;
         for (String rawLine : lines) {
             String line = cleanLine(rawLine);
-            if (line.contains("|")) {
+            List<String> inlineFields = educationFields(line);
+            if (inlineFields.size() > 1 && !isBullet(rawLine)) {
                 flushEducation(block, entries);
-                blockHasDegree = blockHasDate = false;
-                List<String> fields = splitFields(line);
-                entries.add(new EducationEntry(fieldOrNull(fields, 0), fieldOrNull(fields, 1),
-                        fieldOrNull(fields, 2), fieldOrNull(fields, 3)));
+                block.addAll(inlineFields);
                 continue;
             }
-            boolean degree = DEGREE_PATTERN.matcher(line).find();
-            boolean date = containsDate(line);
-            boolean institution = !degree && !date && looksLikeInstitution(line);
-            if (!block.isEmpty() && ((institution && blockHasDate) || (degree && blockHasDegree))) {
+            String withoutDate = removeTrailingDate(line);
+            boolean degree = !isBullet(rawLine) && DEGREE_PATTERN.matcher(withoutDate).find();
+            boolean institution = !isBullet(rawLine) && !degree && looksLikeInstitution(withoutDate)
+                    && (containsDate(line) || INSTITUTION_PATTERN.matcher(withoutDate).find()
+                        || !looksLikeLocation(withoutDate));
+            boolean hasDegree = firstIndexMatching(block, DEGREE_PATTERN) >= 0;
+            boolean hasInstitution = block.stream().map(this::removeTrailingDate)
+                    .anyMatch(value -> !DEGREE_PATTERN.matcher(value).find() && looksLikeInstitution(value));
+            // A date on the degree does not make the following university a second school.
+            // Conversely an institution with dates can start the next complete school block.
+            if (!block.isEmpty() && ((institution && hasInstitution && hasDegree)
+                    || (degree && hasDegree))) {
                 flushEducation(block, entries);
-                blockHasDegree = blockHasDate = false;
             }
             block.add(line);
-            blockHasDegree |= degree;
-            blockHasDate |= date;
         }
         flushEducation(block, entries);
         return List.copyOf(entries);
@@ -337,6 +338,9 @@ public class ResumeParser {
 
     private boolean looksLikeInstitution(String line) {
         if (line.matches(".*\\d.*")) {
+            return false;
+        }
+        if (line.contains(":") || line.split("\\s+").length > 16) {
             return false;
         }
         if (INSTITUTION_PATTERN.matcher(line).find()) {
@@ -420,12 +424,12 @@ public class ResumeParser {
         int degreeIndex = firstIndexMatching(block, DEGREE_PATTERN);
         int institutionIndex = -1;
         for (int index = 0; index < block.size(); index++) {
-            if (index != degreeIndex && !containsDate(block.get(index)) && looksLikeInstitution(block.get(index))) {
+            if (index != degreeIndex && looksLikeInstitution(removeTrailingDate(block.get(index)))) {
                 institutionIndex = index;
                 break;
             }
         }
-        String institution = institutionIndex >= 0 ? block.get(institutionIndex) : null;
+        String institution = institutionIndex >= 0 ? removeTrailingDate(block.get(institutionIndex)) : null;
         String degree = degreeIndex >= 0 ? block.get(degreeIndex) : null;
         String dates = firstMatch(DATE_PATTERN, String.join(" ", block));
         // Word puts the location and dates right-aligned with a tab; after extraction they are glued to the
@@ -440,10 +444,30 @@ public class ResumeParser {
             degree = removeTrailingDate(degree);
         }
         List<String> details = new ArrayList<>();
+        if (degree != null) {
+            // Builder templates put the grade and right-aligned city after the degree.
+            Matcher city = Pattern.compile("^(.*(?:\\d/\\d+(?:\\.\\d+)?|\\d(?:\\.\\d+)?%)(?:\\s*\\([^)]*\\))?)\\s+([A-Z][\\w.'-]*(?:\\s+[A-Z][\\w.'-]*)?)$")
+                    .matcher(degree);
+            if (city.matches()) {
+                degree = city.group(1);
+                if (location == null) {
+                    location = city.group(2);
+                }
+            }
+            String[] grade = degree.split("\\s+[—–-]\\s+(?=(?:CGPA|GPA|\\d))", 2);
+            degree = grade[0];
+            if (grade.length > 1) {
+                details.add(grade[1]);
+            }
+        }
         for (int index = 0; index < block.size(); index++) {
             String line = block.get(index);
             if (index != institutionIndex && index != degreeIndex && !line.equals(dates)) {
-                details.add(line);
+                if (location == null && looksLikeLocation(line)) {
+                    location = line;
+                } else {
+                    details.add(line);
+                }
             }
         }
         entries.add(new EducationEntry(institution, degree, dates,
@@ -478,6 +502,16 @@ public class ResumeParser {
                 // a new bullet starts its own line of the description
                 current = current.withDescription(appendLine(current.description(), line));
                 previousText = line;
+            } else if (pipeFields && !bullet && current != null && current.description() == null
+                    && !containsDate(line) && !line.contains("|") && looksLikeEmployerOrTitle(line)
+                    && ((current.header() == null && current.title() != null)
+                        || (current.title() == null && current.header() != null
+                            && JOB_TITLE_WORD.matcher(line).find()))) {
+                // A stacked title/company pair is one job, including long company names ending in Ltd.
+                current = current.header() == null
+                        ? new HeaderEntry(line, current.title(), current.dates(), null)
+                        : new HeaderEntry(current.header(), line, current.dates(), null);
+                previousText = null;
             } else if (!bullet && current != null && previousText != null && isContinuation(previousText, line)) {
                 // a long bullet wrapped onto the next line: same bullet, not a new entry
                 current = current.withDescription(append(current.description(), line));
@@ -497,7 +531,7 @@ public class ResumeParser {
                     entries.add(current);
                 }
                 List<String> fields = pipeFields ? headerFields(line) : splitFields(line);
-                boolean piped = pipeFields && fields.size() > 1;
+                boolean piped = pipeFields && (fields.size() > 1 || JOB_TITLE_WORD.matcher(line).find());
                 if (piped) {
                     current = pipedExperienceHeader(fields);
                 } else {
@@ -520,7 +554,7 @@ public class ResumeParser {
      * "Company | Title | Dates | Description" with two fixes:
      * - Dates may be in any field, or glued to the end of the last one ("Infolabz IT Services May 2024 –
      *   Jul 2024") because Word right-aligns them with a tab. A field that is only a date, or a trailing
-     *   date on the last field, becomes the dates; the other fields keep their order.
+     *   date on a field, becomes the dates; the other fields keep their order.
      * - Many students write "Title | Company". If the first field has a job-title word (Intern, Developer,
      *   Engineer, ...) and the second does not, they are swapped. Otherwise the old default
      *   (company first) is kept, so existing resumes parse exactly as before.
@@ -534,7 +568,7 @@ public class ResumeParser {
                 dates = field;
                 continue;
             }
-            if (dates == null && index == fields.size() - 1 && !removeTrailingDate(field).equals(field)) {
+            if (dates == null && !removeTrailingDate(field).equals(field)) {
                 dates = firstMatch(Pattern.compile("(?:" + DATE_PATTERN.pattern() + ")\\s*\\)?$"), field)
                         .replaceFirst("\\)$", "").trim();
                 field = removeTrailingDate(field);
@@ -548,6 +582,10 @@ public class ResumeParser {
             String swap = company;
             company = title;
             title = swap;
+        }
+        if (title == null && company != null && JOB_TITLE_WORD.matcher(company).find()) {
+            title = company;
+            company = null;
         }
         return new HeaderEntry(company, title, dates, fieldOrNull(rest, 2));
     }
@@ -586,7 +624,7 @@ public class ResumeParser {
     private String removeTrailingDate(String line) {
         Matcher matcher = Pattern.compile("\\(?\\s*(?:" + DATE_PATTERN.pattern() + ")\\s*\\)?$").matcher(line);
         return matcher.find() && matcher.start() > 0
-                ? line.substring(0, matcher.start()).replaceFirst("[\\s,–-]+$", "").trim()
+                ? line.substring(0, matcher.start()).replaceFirst("[\\s,–—-]+$", "").trim()
                 : line;
     }
 
@@ -640,40 +678,55 @@ public class ResumeParser {
         return BULLET_PREFIX.matcher(line).replaceFirst("").trim();
     }
 
-    // Header fields split on "|", else on " — " / " – " (keeping a "May 2022 – Present" range together)
+    // Peel off a trailing date range before splitting header fields: the dash inside
+    // "Data Analyst Jun 2024 – Present" must never become a company/title separator.
     private List<String> headerFields(String line) {
         if (line.contains("|")) {
             return splitFields(line);
         }
-        String[] parts = DASH_FIELD_SEPARATOR.split(line);
-        if (parts.length < 2) {
-            return List.of(cleanLine(line));
+        String header = removeTrailingDate(line);
+        String dates = header.equals(line) ? null : firstMatch(DATE_PATTERN, line.substring(header.length()));
+        List<String> fields = new ArrayList<>(Arrays.asList(DASH_FIELD_SEPARATOR.split(header)));
+        if (fields.size() == 1 && header.matches("(?i).+\\s+at\\s+.+")) {
+            String[] pair = header.split("(?i)\\s+at\\s+", 2);
+            // "at" states the order explicitly; do not guess using job-title vocabulary.
+            fields = new ArrayList<>(List.of(pair[1], pair[0]));
         }
-        List<String> fields = new ArrayList<>();
-        for (String part : parts) {
-            String trimmed = part.trim();
-            int last = fields.size() - 1;
-            if (last >= 0 && isDateOnly(fields.get(last)) && isDateEndOnly(trimmed)) {
-                fields.set(last, fields.get(last) + " – " + trimmed);
-            } else {
-                fields.add(trimmed);
+        if (dates != null) {
+            fields.add(dates);
+        }
+        return fields;
+    }
+
+    private boolean looksLikeEmployerOrTitle(String line) {
+        // Employer names can be long and end in Ltd./Inc.; achievement sentences are not headers.
+        return line.split("\\s+").length <= 12 && !line.contains(":")
+                && (!line.endsWith(".") || line.matches("(?i).*(?:ltd|inc|co|corp)\\.$"))
+                && !line.matches("(?i)^(?:built|developed|created|led|managed|improved|wrote|implemented|designed|delivered|worked)\\s+.*");
+    }
+
+    private List<String> educationFields(String line) {
+        if (line.contains("|")) {
+            return splitFields(line);
+        }
+        String header = removeTrailingDate(line);
+        String[] parts = header.split("(?i)\\s+at\\s+|\\s+[—–]\\s+");
+        // Split only real institution/degree pairs, not "BSc — CGPA 8.1/10 City".
+        if (parts.length == 2 && Arrays.stream(parts).anyMatch(p -> DEGREE_PATTERN.matcher(p).find())
+                && Arrays.stream(parts).anyMatch(p -> !DEGREE_PATTERN.matcher(p).find()
+                        && INSTITUTION_PATTERN.matcher(p).find())) {
+            List<String> fields = new ArrayList<>(Arrays.asList(parts));
+            if (!header.equals(line)) {
+                fields.add(firstMatch(DATE_PATTERN, line.substring(header.length())));
             }
+            return fields;
         }
-        if (fields.size() == 2 && containsDate(fields.get(1)) && !containsDate(fields.get(0))) {
-            fields.add(1, ""); // "Infosys – Jul 2020 – Apr 2022": company and dates, no title
-        }
-        return fields.size() > 1 ? fields : List.of(cleanLine(line));
+        return List.of(line);
     }
 
-    private static final Pattern DATE_POINT_ONLY = Pattern.compile("(?iu)^(?:expected\\s+)?" + DATE_POINT + "$");
-    private static final Pattern DATE_END_ONLY = Pattern.compile("(?iu)^" + DATE_END + "$");
-
-    private boolean isDateOnly(String field) {
-        return DATE_POINT_ONLY.matcher(field.trim()).matches();
-    }
-
-    private boolean isDateEndOnly(String field) {
-        return DATE_END_ONLY.matcher(field.trim()).matches();
+    private boolean looksLikeLocation(String line) {
+        return LOCATION_TAIL.matcher(line).matches() && !INSTITUTION_PATTERN.matcher(line).find()
+                && !DEGREE_PATTERN.matcher(line).find() && !line.contains(":");
     }
 
     private ParsedResume emptyResume() {
