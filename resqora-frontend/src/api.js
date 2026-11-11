@@ -62,6 +62,7 @@ export const api = {
   listResumes: () => request('/api/resumes'),
   aiUsage: () => request('/api/ai/usage'),
   jobs: (id) => request(`/api/resumes/${id}/jobs`),
+  jobPicks: (id) => request(`/api/resumes/${id}/job-recommendations`),
   uploadResume: (file) => {
     const form = new FormData()
     form.append('file', file)
