@@ -19,6 +19,8 @@ const FAQ = [
   ['Do you use cookies?', 'Only Google Analytics cookies, to count visits. Your resume content is never sent to it.'],
 ]
 
+const CTA = 'inline-flex items-center justify-center h-12 px-6 rounded-lg text-[15px] font-medium shadow-sm transition'
+
 function Heading({ kicker, title }) {
   return (
     <div className="max-w-2xl">
@@ -33,10 +35,10 @@ export default function Home() {
     <div className="max-w-5xl mx-auto">
       <section className="text-center pt-2 sm:pt-8">
         <h1 className="font-serif text-4xl sm:text-5xl leading-[1.1] tracking-tight max-w-3xl mx-auto">Know what your resume is missing before a recruiter does.</h1>
-        <p className="mt-5 text-muted text-base sm:text-lg max-w-2xl mx-auto">Upload your resume and Resqora scores it out of 100, quotes the exact lines that need work, and lets you ask questions about it.</p>
-        <div className="mt-8 flex flex-wrap justify-center gap-3">
-          <Link to="/register" className="inline-flex items-center h-10 px-5 rounded-md bg-accent text-accent-ink text-sm font-medium hover:brightness-110 transition">Create a free account</Link>
-          <Link to="/login" className="inline-flex items-center h-10 px-5 rounded-md border border-line text-sm font-medium hover:bg-sunken transition-colors">Log in</Link>
+        <p className="mt-5 text-muted text-base sm:text-lg max-w-2xl mx-auto">Upload your resume and Resqora scores it out of 100, quotes the exact lines that need work, and lets you ask questions about it. No resume yet? Build one and download it as a PDF or Word file.</p>
+        <div className="mt-8 flex flex-col sm:flex-row justify-center gap-3 max-w-sm sm:max-w-none mx-auto">
+          <Link to="/register" className={`${CTA} bg-accent text-accent-ink hover:brightness-110`}>Score my resume</Link>
+          <Link to="/build" className={`${CTA} bg-ink text-paper hover:opacity-90`}>Build a resume</Link>
         </div>
         <div className="mt-12 rounded-xl border border-line overflow-hidden shadow-sm">
           <img src={heroLight} alt="A Resqora results page showing a score of 86, section scores and a finding quoting a resume line" className="block w-full dark:hidden" width="1600" height="1000" />
@@ -73,11 +75,16 @@ export default function Home() {
       </section>
 
       <section className="mt-20 sm:mt-28">
-        <Heading title="Ask questions about your resume." />
-        <div className="mt-8 grid sm:grid-cols-3 gap-4">
+        <Heading title="Ask questions about your resume, or build a new one." />
+        <div className="mt-8 grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-surface border border-line rounded-xl p-5"><h3 className="font-medium">Summary</h3><p className="mt-1.5 text-sm text-muted">A short note at the top of each resume on what's strong and what to fix first.</p></div>
           <div className="bg-surface border border-line rounded-xl p-5"><h3 className="font-medium">Chat</h3><p className="mt-1.5 text-sm text-muted">Ask for interview questions, a rewrite of a weak line, or whether to apply for a job you paste in.</p></div>
           <div className="bg-surface border border-line rounded-xl p-5"><h3 className="font-medium">Preview</h3><p className="mt-1.5 text-sm text-muted">See your original file next to its score while you read the notes.</p></div>
+          <Link to="/build" className="group bg-surface border border-line rounded-xl p-5 hover:border-faint transition-colors">
+            <h3 className="font-medium">Resume builder</h3>
+            <p className="mt-1.5 text-sm text-muted">Fill in a short form, or start from a resume you have. Pick one of five clean formats and download a PDF or Word file.</p>
+            <p className="mt-3 text-sm font-medium text-accent group-hover:underline underline-offset-4">Build a resume ›</p>
+          </Link>
         </div>
         <p className="mt-4 text-sm text-muted">You get 20 AI chats a day. The score itself never uses AI.</p>
       </section>
@@ -109,7 +116,10 @@ export default function Home() {
 
       <section className="mt-20 sm:mt-28 mb-4 text-center bg-surface border border-line rounded-2xl px-6 py-12">
         <h2 className="font-serif text-2xl sm:text-3xl tracking-tight">Upload a resume and see your score.</h2>
-        <Link to="/register" className="mt-6 inline-flex items-center h-10 px-5 rounded-md bg-accent text-accent-ink text-sm font-medium hover:brightness-110 transition">Create a free account</Link>
+        <div className="mt-6 flex flex-col sm:flex-row justify-center gap-3 max-w-sm sm:max-w-none mx-auto">
+          <Link to="/register" className={`${CTA} bg-accent text-accent-ink hover:brightness-110`}>Score my resume</Link>
+          <Link to="/build" className={`${CTA} border border-line bg-paper hover:bg-sunken shadow-none`}>Build a resume</Link>
+        </div>
       </section>
     </div>
   )
