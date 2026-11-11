@@ -336,6 +336,7 @@ function Chat({ id, jd, openJobBox }) {
   return (
     <ChatPanel kind="resumeChat" title="Ask about this resume" placeholder="Ask a question about this resume" starters={STARTERS}
       beforeSend={(st) => { if (st?.needsJd && !jd.trim()) { openJobBox(); return 'Paste the job post in "Compare with a job" first.' } }}
+      historyKey={`resume-${id}`} loadHistory={() => api.chatHistory(id)} clearHistory={() => api.clearChat(id)}
       send={(text, history) => api.chat(id, text, history, jd.trim().slice(0, 5000) || undefined)} />
   )
 }
