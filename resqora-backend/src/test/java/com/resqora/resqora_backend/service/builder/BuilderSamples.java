@@ -9,7 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-// complete sample resumes, one per template, used for the format picker thumbnails (builder-samples/)
+// full sample resumes, one per template, used for the format picker thumbnails
 final class BuilderSamples {
     private BuilderSamples() {
     }
