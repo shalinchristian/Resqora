@@ -1,5 +1,7 @@
 package com.resqora.resqora_backend.service;
 
+import com.resqora.resqora_backend.audit.LoginAudit;
+import com.resqora.resqora_backend.audit.LoginAudit.Reason;
 import com.resqora.resqora_backend.dto.ChangePasswordRequest;
 import com.resqora.resqora_backend.dto.LoginRequest;
 import com.resqora.resqora_backend.dto.LoginResponse;
@@ -98,14 +100,27 @@ public class AuthService {
     @Transactional(noRollbackFor = InvalidCodeException.class)
     public LoginResponse verifyEmail(VerifyEmailRequest request) {
         // unknown email gets the same answer as a wrong code
-        User user = userRepository.findByEmail(request.email()).orElseThrow(InvalidCodeException::new);
-        if (user.isEmailVerified()) {
+        User user = userRepository.findByEmail(request.email()).orElse(null);
+        LoginAudit.identify(request.email(), user == null ? null : user.getId());
+        if (user == null) {
+            LoginAudit.failure(Reason.USER_NOT_FOUND);
             throw new InvalidCodeException();
         }
-        emailCodeService.consume(user.getId(), Purpose.VERIFY_EMAIL, request.code());
+        if (user.isEmailVerified()) {
+            LoginAudit.failure(Reason.EMAIL_ALREADY_VERIFIED);
+            throw new InvalidCodeException();
+        }
+        try {
+            emailCodeService.consume(user.getId(), Purpose.VERIFY_EMAIL, request.code());
+        } catch (InvalidCodeException exception) {
+            LoginAudit.failure(Reason.INVALID_CODE);
+            throw exception;
+        }
         user.setEmailVerified(true);
         userRepository.save(user);
-        return new LoginResponse(jwtService.generateToken(user), user.getName());
+        LoginResponse response = new LoginResponse(jwtService.generateToken(user), user.getName());
+        LoginAudit.authenticated();
+        return response;
     }
 
     // Always ends the same way (202) whether or not the email exists, so it can't be used to find accounts.
@@ -148,24 +163,31 @@ public class AuthService {
     }
 
     public LoginResponse login(LoginRequest request, String clientIp) {
+        LoginAudit.identify(request.email(), null);
         // checked before the password, so a blocked attacker learns nothing more
         if (loginAttemptLimiter.isBlocked(request.email(), clientIp)) {
+            LoginAudit.failure(Reason.RATE_LIMITED);
             throw new TooManyLoginAttemptsException(loginAttemptLimiter.retryAfterSeconds(request.email(), clientIp));
         }
 
         User user = userRepository.findByEmail(request.email()).orElse(null);
+        LoginAudit.identify(request.email(), user == null ? null : user.getId());
         if (user == null || !passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+            LoginAudit.failure(user == null ? Reason.USER_NOT_FOUND : Reason.BAD_CREDENTIALS);
             loginAttemptLimiter.recordFailure(request.email(), clientIp);
             throw new InvalidCredentialsException();
         }
 
         // checked only after the password is right, so it reveals nothing to someone guessing
         if (requireEmailVerification && !user.isEmailVerified()) {
+            LoginAudit.failure(Reason.EMAIL_NOT_VERIFIED);
             throw new EmailNotVerifiedException();
         }
         loginAttemptLimiter.recordSuccess(request.email());
         // name is null for older accounts; the frontend decides what to show
-        return new LoginResponse(jwtService.generateToken(user), user.getName());
+        LoginResponse response = new LoginResponse(jwtService.generateToken(user), user.getName());
+        LoginAudit.authenticated();
+        return response;
     }
 
     public MeResponse me(Long userId) {
