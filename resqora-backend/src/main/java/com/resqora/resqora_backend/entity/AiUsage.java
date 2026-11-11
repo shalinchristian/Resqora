@@ -63,5 +63,6 @@ public class AiUsage {
     public User getUser() { return user; }
     public Kind getKind() { return kind; }
     public Provider getProvider() { return provider; }
+    public void setProvider(Provider provider) { this.provider = provider; }
     public Instant getCreatedAt() { return createdAt; }
 }

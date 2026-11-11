@@ -140,7 +140,7 @@ public class AiService {
     }
 
     // Chat about all of the user's own resumes. Groq when its key is set (keeps Gemini's smaller free
-    // quota for summaries and resume chat), otherwise Gemini. Uses a dashboard chat message either way.
+    // quota for summaries and resume chat), with Gemini on provider failure. One dashboard message either way.
     public ChatResponse dashboardChat(DashboardChatRequest request, Authentication authentication) {
         Long userId = requireAiEnabled(authentication);
         Provider provider = groqClient.isConfigured() ? Provider.GROQ
@@ -151,9 +151,17 @@ public class AiService {
         List<ChatMessage> history = request.history() == null ? List.of() : request.history();
         String prompt = DashboardChatPrompt.build(resumes, request.message(), history);
         Reservation reservation = reserve(userId, Kind.DASHBOARD_CHAT, provider);
-        String reply = call(reservation, () -> provider == Provider.GROQ
-                ? groqClient.generateText(DashboardChatPrompt.RULES, prompt)
-                : geminiClient.generateText(DashboardChatPrompt.RULES, prompt));
+        String reply = call(reservation, () -> {
+            if (provider == Provider.GROQ) {
+                try {
+                    return clean(groqClient.generateText(DashboardChatPrompt.RULES, prompt));
+                } catch (AiUnavailableException exception) {
+                    requireConfigured(geminiClient.isConfigured());
+                    switchToGemini(userId, reservation);
+                }
+            }
+            return geminiClient.generateText(DashboardChatPrompt.RULES, prompt);
+        });
         return new ChatResponse(reply, reservation.remainingToday(), dashboardChatDailyLimit);
     }
 
@@ -234,6 +242,25 @@ public class AiService {
                 }
                 AiUsage saved = usageRepository.saveAndFlush(new AiUsage(user, kind, provider));
                 return new Reservation(saved.getId(), (int) Math.max(0, limit - (usedToday + 1)));
+            });
+        }
+    }
+
+    // Keep the same row (and therefore the same dashboard reservation) across fallback.
+    // Reserve Gemini's app-wide quota before calling it; failed Groq calls use no Groq quota.
+    // The outer call() refunds this row too if Gemini fails or its quota is exhausted.
+    private void switchToGemini(Long userId, Reservation reservation) {
+        synchronized (reserveLock) {
+            transactionTemplate.executeWithoutResult(status -> {
+                userRepository.findByIdForUpdate(userId)
+                        .orElseThrow(AuthenticatedUserNotFoundException::new);
+                if (usageRepository.countByProviderAndCreatedAtGreaterThanEqual(Provider.GEMINI, startOfToday())
+                        >= geminiDailyCap) {
+                    throw new AiUnavailableException();
+                }
+                AiUsage usage = usageRepository.findById(reservation.usageId()).orElseThrow();
+                usage.setProvider(Provider.GEMINI);
+                usageRepository.saveAndFlush(usage);
             });
         }
     }
