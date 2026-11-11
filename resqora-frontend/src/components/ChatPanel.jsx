@@ -6,7 +6,7 @@ import { Section, Button, ErrorBox } from './ui.jsx'
 
 // Shared chat box, used for one resume and for the dashboard chat across all resumes.
 // send(text, history) must return { reply, remainingToday, limit }.
-// loadHistory() returns { messages: [{ role, text }] } (last 20, oldest first); clearHistory() deletes it.
+// loadHistory() returns { messages: [{ role: 'user' | 'assistant', content }] } (last 20, oldest first); clearHistory() deletes it.
 // kind picks this chat's own daily allowance from GET /api/ai/usage: 'resumeChat' or 'dashboardChat'.
 export default function ChatPanel({ kind = 'resumeChat', title, placeholder, starters = [], send: sendFn, beforeSend, onUsage, showUsage = true, style, historyKey, loadHistory, clearHistory }) {
   const { user } = useAuth()
@@ -40,8 +40,11 @@ export default function ChatPanel({ kind = 'resumeChat', title, placeholder, sta
     loadHistory()
       .then((d) => {
         if (!live) return
-        const saved = (d?.messages || []).filter((m) => m && m.text && (m.role === 'user' || m.role === 'model'))
-        setMessages((now) => (now.length ? now : saved.slice(-20).map((m) => ({ role: m.role, text: m.text }))))
+        // server sends { role: 'user' | 'assistant', content }; the chat uses 'model' and text
+        const saved = (d?.messages || [])
+          .map((m) => ({ role: m?.role === 'user' ? 'user' : m?.role === 'assistant' || m?.role === 'model' ? 'model' : null, text: m?.content ?? m?.text ?? '' }))
+          .filter((m) => m.role && m.text)
+        setMessages((now) => (now.length ? now : saved.slice(-20)))
       })
       .catch(() => {}) // no saved chat yet, or history isn't available: start empty
       .finally(() => { if (live) setLoading(false) })
