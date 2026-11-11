@@ -69,6 +69,7 @@ public class AiService {
             the single most important thing to fix. No markdown, no lists, no greeting.
             """;
 
+    private final ChatHistoryService chatHistoryService;
     private final ResumeService resumeService;
     private final ResumeRepository resumeRepository;
     private final UserRepository userRepository;
@@ -84,6 +85,7 @@ public class AiService {
     private final TransactionTemplate transactionTemplate;
 
     public AiService(
+            ChatHistoryService chatHistoryService,
             ResumeService resumeService,
             ResumeRepository resumeRepository,
             UserRepository userRepository,
@@ -97,6 +99,7 @@ public class AiService {
             @Value("${resqora.ai.groq-daily-cap:900}") int groqDailyCap,
             @Value("${resqora.timezone:Asia/Kolkata}") String timezone,
             TransactionTemplate transactionTemplate) {
+        this.chatHistoryService = chatHistoryService;
         this.resumeService = resumeService;
         this.resumeRepository = resumeRepository;
         this.userRepository = userRepository;
@@ -137,6 +140,7 @@ public class AiService {
         Reservation reservation = reserve(userId, Kind.RESUME_CHAT, Provider.GEMINI);
         String reply = call(reservation,
                 () -> geminiClient.generateText(CHAT_RULES, buildChatPrompt(resume, request)));
+        chatHistoryService.saveReply(resumeId, request.message(), reply, authentication);
         return new ChatResponse(reply, reservation.remainingToday(), resumeChatDailyLimit);
     }
 
@@ -163,6 +167,7 @@ public class AiService {
             }
             return geminiClient.generateText(DashboardChatPrompt.RULES, prompt);
         });
+        chatHistoryService.saveReply(null, request.message(), reply, authentication);
         return new ChatResponse(reply, reservation.remainingToday(), dashboardChatDailyLimit);
     }
 

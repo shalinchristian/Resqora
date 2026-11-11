@@ -270,6 +270,7 @@ export default function Dashboard() {
             <AiCard usage={usage} />
             <ChatPanel title="Ask about all your resumes" placeholder="Ask about your resumes" starters={DASH_STARTERS}
               kind="dashboardChat" send={api.dashboardChat} showUsage={false}
+              historyKey="dashboard" loadHistory={api.dashboardChatHistory} clearHistory={api.clearDashboardChat}
               onUsage={(u) => setUsage((prev) => prev ? { ...prev, dashboardChat: { ...(prev.dashboardChat || {}), remainingToday: u.remainingToday, limit: u.limit } } : prev)} />
           </aside>
         </div>
