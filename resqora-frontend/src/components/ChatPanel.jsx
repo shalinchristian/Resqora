@@ -8,6 +8,8 @@ import { Section, Button, ErrorBox } from './ui.jsx'
 // send(text, history) must return { reply, remainingToday, limit }.
 // loadHistory() returns { messages: [{ role: 'user' | 'assistant', content }] } (last 20, oldest first); clearHistory() deletes it.
 // kind picks this chat's own daily allowance from GET /api/ai/usage: 'resumeChat' or 'dashboardChat'.
+const KEEP = 20 // same as the server keeps per chat
+
 export default function ChatPanel({ kind = 'resumeChat', title, placeholder, starters = [], send: sendFn, beforeSend, onUsage, showUsage = true, style, historyKey, loadHistory, clearHistory }) {
   const { user } = useAuth()
   const onDashboard = useLocation().pathname === '/'
@@ -44,7 +46,7 @@ export default function ChatPanel({ kind = 'resumeChat', title, placeholder, sta
         const saved = (d?.messages || [])
           .map((m) => ({ role: m?.role === 'user' ? 'user' : m?.role === 'assistant' || m?.role === 'model' ? 'model' : null, text: m?.content ?? m?.text ?? '' }))
           .filter((m) => m.role && m.text)
-        setMessages((now) => (now.length ? now : saved.slice(-20)))
+        setMessages(saved.slice(-KEEP))
       })
       .catch(() => {}) // no saved chat yet, or history isn't available: start empty
       .finally(() => { if (live) setLoading(false) })
@@ -66,19 +68,20 @@ export default function ChatPanel({ kind = 'resumeChat', title, placeholder, sta
 
   const send = async (text, starter) => {
     text = text.trim()
-    if (!text || busy) return
+    if (!text || busy || loading) return // wait for the saved chat so it isn't replaced
     const blocked = beforeSend?.(starter)
     if (blocked) return setError(blocked)
     setError(''); setInput('')
     const history = messages.slice(-6).map((m) => ({ role: m.role, text: m.text.slice(0, 500) }))
-    setMessages((m) => [...m, { role: 'user', text }])
+    const before = messages
+    setMessages((m) => [...m, { role: 'user', text }].slice(-KEEP))
     setBusy(true)
     try {
       const r = await sendFn(text, history)
-      setMessages((m) => [...m, { role: 'model', text: r.reply }])
+      setMessages((m) => [...m, { role: 'model', text: r.reply }].slice(-KEEP))
       if (r.remainingToday != null) { setUsage({ left: r.remainingToday, limit: r.limit }); onUsage?.({ remainingToday: r.remainingToday, limit: r.limit }) }
     } catch (e) {
-      setMessages((m) => m.slice(0, -1)); setInput(text)
+      setMessages(before); setInput(text)
       if (e.status === 429 && usage) setUsage({ ...usage, left: 0 })
       setError(e.status === 429 ? (e.message && !/^Request failed/.test(e.message) ? e.message : "You've used today's chats here. They reset tomorrow.")
         : e.code === 'AI_DISABLED' ? 'AI is turned off for your account.'
@@ -132,7 +135,7 @@ export default function ChatPanel({ kind = 'resumeChat', title, placeholder, sta
             <label className="sr-only" htmlFor={inputId}>Your question</label>
             <input id={inputId} name="resqora-chat-message" autoComplete="off" autoCorrect="off" data-1p-ignore data-lpignore="true" data-form-type="other" value={input} maxLength={500} onChange={(e) => setInput(e.target.value)} placeholder={placeholder}
               className="flex-1 min-w-0 rounded-lg border border-line bg-surface px-3 h-10 text-sm outline-none focus:border-accent" />
-            <Button type="submit" variant="accent" className="h-10" disabled={busy || !input.trim()}>Send</Button>
+            <Button type="submit" variant="accent" className="h-10" disabled={busy || loading || !input.trim()}>Send</Button>
           </form>
           {error && <div className="mt-3"><ErrorBox message={error} /></div>}
         </>
