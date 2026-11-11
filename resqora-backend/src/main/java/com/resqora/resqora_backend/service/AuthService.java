@@ -20,6 +20,7 @@ import com.resqora.resqora_backend.exception.EmailAlreadyExistsException;
 import com.resqora.resqora_backend.exception.IncorrectPasswordException;
 import com.resqora.resqora_backend.exception.InvalidCredentialsException;
 import com.resqora.resqora_backend.repository.ResumeRepository;
+import com.resqora.resqora_backend.repository.ChatHistoryRepository;
 import com.resqora.resqora_backend.exception.TooManyLoginAttemptsException;
 import com.resqora.resqora_backend.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Value;
@@ -35,6 +36,7 @@ public class AuthService {
     private final JwtService jwtService;
     private final LoginAttemptLimiter loginAttemptLimiter;
     private final ResumeRepository resumeRepository;
+    private final ChatHistoryRepository chatHistoryRepository;
     private final PasswordAttemptLimiter passwordAttemptLimiter;
     private final EmailCodeService emailCodeService;
     private final CodeRequestLimiter codeRequestLimiter;
@@ -47,6 +49,7 @@ public class AuthService {
             JwtService jwtService,
             LoginAttemptLimiter loginAttemptLimiter,
             ResumeRepository resumeRepository,
+            ChatHistoryRepository chatHistoryRepository,
             PasswordAttemptLimiter passwordAttemptLimiter,
             EmailCodeService emailCodeService,
             CodeRequestLimiter codeRequestLimiter,
@@ -56,6 +59,7 @@ public class AuthService {
         this.requireEmailVerification = requireEmailVerification;
         this.passwordAttemptLimiter = passwordAttemptLimiter;
         this.resumeRepository = resumeRepository;
+        this.chatHistoryRepository = chatHistoryRepository;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
@@ -226,11 +230,13 @@ public class AuthService {
     // Soft delete. The account row stays as a record with the name, email and sign-up time, marked
     // DELETED with the time, and can never log in again; the same email can sign up as a new account.
     // Everything the user made is removed: resumes (analyses, AI summaries, AI answers and job
-    // suggestions cascade from them; files are stored in the resume rows) and any pending email codes.
+    // suggestions and resume chat history cascade from them; files are stored in resume rows),
+    // all chat history (including dashboard), and any pending email codes.
     // ai_usage rows stay: they only record that a call happened, and the app-wide daily AI caps count them.
     @Transactional
     public void deleteAccount(Long userId, String password) {
-        User user = findUser(userId);
+        User user = userRepository.findByIdForUpdate(userId).filter(u -> !u.isDeleted())
+                .orElseThrow(AuthenticatedUserNotFoundException::new);
         // brute-force protection: 5 wrong passwords per user in 15 min -> 429 (checked before the hash)
         passwordAttemptLimiter.rejectIfBlocked(userId);
         if (!passwordEncoder.matches(password, user.getPasswordHash())) {
@@ -238,6 +244,7 @@ public class AuthService {
             throw new IncorrectPasswordException("Password is incorrect");
         }
         passwordAttemptLimiter.recordSuccess(userId);
+        chatHistoryRepository.deleteByUserId(userId);
         resumeRepository.deleteAll(resumeRepository.findByUserIdOrderByCreatedAtDescIdDesc(userId));
         resumeRepository.flush();
         emailCodeService.discardAll(userId);
