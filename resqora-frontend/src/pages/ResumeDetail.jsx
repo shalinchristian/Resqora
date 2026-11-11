@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 import { api } from '../api.js'
 import { FEATURES } from '../features.js'
 import Jobs from '../components/Jobs.jsx'
+import JobPicks from '../components/JobPicks.jsx'
 import ChatPanel from '../components/ChatPanel.jsx'
 import { useAuth } from '../auth.jsx'
 import { useCountUp, useMounted } from '../hooks.js'
@@ -415,6 +416,7 @@ export default function ResumeDetail() {
           <Findings findings={analysis.findings} />
           <Chat id={id} jd={jd} openJobBox={() => setJobOpen(true)} />
           <MatchBox id={id} jd={jd} setJd={setJd} open={jobOpen} setOpen={setJobOpen} />
+          <JobPicks resumeId={id} />
           {FEATURES.jobs && <Jobs resumeId={id} />}
           <Parsed parsed={parsed} />
         </div>
