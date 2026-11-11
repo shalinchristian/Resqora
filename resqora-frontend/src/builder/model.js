@@ -206,9 +206,9 @@ export function splitList(text, commas = false) {
 // The draft is tagged with the signed-in user's id and only restored for that same user,
 // so someone else logging in on the same browser never sees it.
 const DRAFT_KEY = 'resqora_builder_draft'
-export function saveDraft(step, draft, userId, section = 0) {
+export function saveDraft(step, draft, userId, section = 0, reached = 0) {
   if (userId == null) return
-  try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ userId, step, section, draft, savedAt: Date.now() })) } catch { /* storage full or blocked */ }
+  try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ userId, step, section, reached, draft, savedAt: Date.now() })) } catch { /* storage full or blocked */ }
 }
 export function loadDraft(userId) {
   try {
@@ -221,7 +221,7 @@ export function loadDraft(userId) {
     for (const key of ['experience', 'education', 'projects']) {
       d[key] = (Array.isArray(d[key]) && d[key].length ? d[key] : base[key]).map((row) => ({ ...row, id: uid() }))
     }
-    return { step: saved.step, section: Number.isInteger(saved.section) ? saved.section : 0, draft: d }
+    return { step: saved.step, section: Number.isInteger(saved.section) ? saved.section : 0, reached: Number.isInteger(saved.reached) ? saved.reached : 0, draft: d }
   } catch { return null }
 }
 export function clearDraft() {

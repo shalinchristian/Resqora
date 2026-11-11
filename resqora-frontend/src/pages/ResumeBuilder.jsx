@@ -145,8 +145,10 @@ function PhoneBar({ children }) {
 
 const barBtn = 'h-12 text-[15px] rounded-[10px]'
 
-function Progress({ step }) {
+function Progress({ step, reached, onGo }) {
   const idx = STEPS.findIndex((s) => s.id === step)
+  // a step is open once you've reached it; later ones stay locked
+  const canGo = (i) => i !== idx && i <= reached
   return (
     <div className="mb-5 lg:mb-7">
       <div className="flex items-center justify-between text-[13px]">
@@ -154,19 +156,35 @@ function Progress({ step }) {
           {STEPS.map((s, i) => (
             <li key={s.id} className="flex items-center gap-2">
               {i > 0 && <span className="w-6 h-px bg-line" aria-hidden="true" />}
-              <span className={`w-[22px] h-[22px] grid place-items-center rounded-full text-xs font-semibold ${i === idx ? 'bg-ink text-paper' : i < idx ? 'bg-good text-paper' : 'bg-sunken text-faint'}`}>{i < idx ? '✓' : i + 1}</span>
-              <span className={i === idx ? 'font-semibold' : 'text-faint'}>{s.label}</span>
+              <button type="button" disabled={!canGo(i)} onClick={() => onGo(s.id)}
+                aria-current={i === idx ? 'step' : undefined}
+                className={`flex items-center gap-2 rounded-full pr-2 -my-1 py-1 ${canGo(i) ? 'hover:text-ink cursor-pointer' : 'cursor-default'} disabled:opacity-100`}>
+                <span className={`w-[22px] h-[22px] grid place-items-center rounded-full text-xs font-semibold ${i === idx ? 'bg-ink text-paper' : i <= reached ? 'bg-good text-paper' : 'bg-sunken text-faint'}`}>{i <= reached && i !== idx ? '✓' : i + 1}</span>
+                <span className={i === idx ? 'font-semibold' : i <= reached ? 'text-muted underline-offset-4 hover:underline' : 'text-faint'}>{s.label}</span>
+              </button>
             </li>
           ))}
         </ol>
         <span className="sm:hidden font-semibold">{STEPS[idx].label}</span>
         <span className="sm:hidden text-faint">Step {idx + 1} of {STEPS.length}</span>
       </div>
-      <div className="sm:hidden flex gap-1 mt-2.5" aria-hidden="true">
-        {STEPS.map((s, i) => <span key={s.id} className={`flex-1 h-1 rounded-full ${i < idx ? 'bg-ink' : i === idx ? 'bg-accent' : 'bg-line'}`} />)}
+      <div className="sm:hidden flex gap-1.5 mt-2.5">
+        {STEPS.map((s, i) => (
+          <button key={s.id} type="button" disabled={!canGo(i)} onClick={() => onGo(s.id)}
+            aria-label={`${s.label}${i === idx ? ' (current step)' : i <= reached ? '' : ' (locked)'}`}
+            className="flex-1 py-2 -my-2">
+            <span className={`block h-1 rounded-full ${i === idx ? 'bg-accent' : i <= reached ? 'bg-ink' : 'bg-line'}`} />
+          </button>
+        ))}
       </div>
     </div>
   )
+}
+
+function shortDate(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return isNaN(d) ? '' : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 // One row per job / school / project. Tap to edit; arrows reorder.
@@ -215,6 +233,11 @@ export default function ResumeBuilder() {
   const [step, setStep] = useState(() => (restored && restored.step && restored.step !== 'start' ? restored.step : 'start'))
   const [draft, setDraft] = useState(() => (restored ? restored.draft : emptyDraft()))
   const [sec, setSec] = useState(() => Math.min(Math.max(restored?.section || 0, 0), SECTIONS.length - 1))
+  const [reached, setReached] = useState(() => {
+    const at = restored ? STEPS.findIndex((s) => s.id === restored.step) : -1
+    return Math.min(STEPS.length - 1, Math.max(restored?.reached || 0, at, 0))
+  })
+  const [picking, setPicking] = useState(false)
   const [open, setOpen] = useState(null) // { kind, id } while editing one job, school or project
   const [tab, setTab] = useState('edit')
   const [nameError, setNameError] = useState('')
@@ -225,7 +248,20 @@ export default function ResumeBuilder() {
   const hasSaved = !isEmptyDraft(draft)
   const template = TEMPLATES.find((t) => t.id === draft.templateId) || TEMPLATES[0]
 
-  useEffect(() => { saveDraft(step, draft, userId, sec) }, [step, draft, userId, sec])
+  useEffect(() => { saveDraft(step, draft, userId, sec, reached) }, [step, draft, userId, sec, reached])
+  useEffect(() => {
+    const i = STEPS.findIndex((s) => s.id === step)
+    if (i > reached) setReached(i)
+  }, [step]) // eslint-disable-line react-hooks/exhaustive-deps
+  // jump to a step already reached; nothing in the draft is touched
+  const goStep = (id) => {
+    const i = STEPS.findIndex((s) => s.id === id)
+    if (i < 0 || i > reached) return
+    if (id === 'preview' && !requireName()) return
+    setOpen(null)
+    if (id === 'preview') setTab('edit')
+    setStep(id)
+  }
   useEffect(() => { if (payload.name) setNameError('') }, [payload.name])
   useEffect(() => { window.scrollTo(0, 0) }, [step, sec, open, tab])
 
@@ -289,7 +325,7 @@ export default function ResumeBuilder() {
     const { draft: next, shortened } = prefillDraft(parsed)
     setDraft((d) => ({ ...next, templateId: d.templateId }))
     setShortened(shortened)
-    setSec(0); setOpen(null)
+    setSec(0); setOpen(null); setReached(0); setPicking(false)
     setStep('format')
   }
   const loadFromResume = async (id) => {
@@ -428,7 +464,7 @@ export default function ResumeBuilder() {
 
   return (
     <div className={`rb max-w-6xl ${step === 'start' ? '' : 'pb-28 lg:pb-0'}`} onFocusCapture={keepClearOfBar}>
-      {step !== 'start' && <Progress step={step} />}
+      {step !== 'start' && <Progress step={step} reached={reached} onGo={goStep} />}
       {step === 'start' && <ErrorBox message={error} />}
 
       {step === 'start' && (
@@ -442,7 +478,7 @@ export default function ResumeBuilder() {
                 <p className="text-[13px] text-muted mt-0.5">{payload.name || 'Your draft'} · {template.name} · saved on this device</p>
                 <div className="flex gap-2 mt-3">
                   <Button className="h-11 px-5 text-[15px]" onClick={() => setStep('form')}>Continue</Button>
-                  <Button variant="ghost" className="h-11 px-4 text-[15px]" onClick={() => { clearDraft(); setDraft(emptyDraft()); setShortened(false); setSec(0) }}>Start over</Button>
+                  <Button variant="ghost" className="h-11 px-4 text-[15px]" onClick={() => { clearDraft(); setDraft(emptyDraft()); setShortened(false); setSec(0); setReached(0) }}>Start over</Button>
                 </div>
               </div>
             )}
@@ -451,14 +487,38 @@ export default function ResumeBuilder() {
               <p className="text-[15px] font-semibold">{busy === 'prefill' ? 'Reading your resume...' : 'Upload a PDF or Word file'}</p>
               <p className="text-[13px] text-muted mt-0.5">We fill the form for you. Up to 2 MB, and it doesn't use a resume slot.</p>
             </button>
-            {existing.map((r) => (
-              <button key={r.id} type="button" disabled={busy === 'prefill'} onClick={() => loadFromResume(r.id)}
-                className="w-full text-left bg-surface border border-line rounded-xl p-4 sm:p-5 hover:border-faint transition-colors disabled:opacity-60">
-                <p className="text-[15px] font-semibold">Start from a resume you uploaded</p>
-                <p className="text-[13px] text-muted mt-0.5 truncate">{r.originalFileName}</p>
+            <div className={`bg-surface border rounded-xl transition-colors ${picking ? 'border-faint' : 'border-line'} ${existing.length ? '' : 'opacity-60'}`}>
+              <button type="button" disabled={!existing.length || busy === 'prefill'} aria-expanded={picking}
+                onClick={() => setPicking((v) => !v)}
+                className="w-full text-left p-4 sm:p-5 flex items-center gap-3 disabled:cursor-not-allowed">
+                <span className="flex-1 min-w-0">
+                  <span className="block text-[15px] font-semibold">Start from a resume you uploaded</span>
+                  <span className="block text-[13px] text-muted mt-0.5">
+                    {existing.length
+                      ? `Pick one of your ${existing.length} uploaded resume${existing.length === 1 ? '' : 's'}. We fill the form from it.`
+                      : "You haven't uploaded a resume yet."}
+                  </span>
+                </span>
+                {existing.length > 0 && <span className="text-[13px] text-faint shrink-0">{picking ? 'Close' : 'Choose ›'}</span>}
               </button>
-            ))}
-            <button type="button" onClick={() => { setDraft(emptyDraft()); setError(''); setSec(0); setOpen(null); setStep('format') }}
+              {picking && existing.length > 0 && (
+                <ul className="border-t border-line px-2 sm:px-3 py-2 max-h-[min(20rem,50vh)] overflow-y-auto overscroll-contain">
+                  {existing.map((r) => (
+                    <li key={r.id}>
+                      <button type="button" disabled={busy === 'prefill'} onClick={() => loadFromResume(r.id)}
+                        className="w-full text-left flex items-center gap-3 rounded-lg px-2 sm:px-3 py-3 hover:bg-sunken disabled:opacity-60">
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-[15px] font-medium truncate">{r.originalFileName}</span>
+                          {shortDate(r.uploadedAt) && <span className="block text-[13px] text-muted mt-0.5">Uploaded {shortDate(r.uploadedAt)}</span>}
+                        </span>
+                        <span className="text-[13px] text-faint shrink-0">{busy === 'prefill' ? '...' : 'Use ›'}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <button type="button" onClick={() => { setDraft(emptyDraft()); setError(''); setSec(0); setOpen(null); setReached(0); setPicking(false); setStep('format') }}
               className="w-full text-left bg-surface border border-line rounded-xl p-4 sm:p-5 hover:border-faint transition-colors">
               <p className="text-[15px] font-semibold">Start blank</p>
               <p className="text-[13px] text-muted mt-0.5">Type everything yourself.</p>
