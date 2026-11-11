@@ -27,7 +27,7 @@ import java.util.Set;
 public class JobSuggestionService {
     static final Duration CACHE_TTL = Duration.ofHours(12);
     static final int MAX_SEARCH_SKILLS = 3;
-    static final int MAX_RESULTS = 10;
+    static final int MAX_RESULTS = 5;
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     private final ResumeService resumeService;
@@ -56,7 +56,7 @@ public class JobSuggestionService {
         // 1. fresh cached result? return it without calling the job site
         Optional<JobSuggestionCache> cached = cacheRepository.findByResumeId(resumeId);
         if (cached.isPresent() && cached.get().getCreatedAt().isAfter(Instant.now().minus(CACHE_TTL))) {
-            return new JobSuggestionsResponse(readJobs(cached.get().getResponseJson()), true);
+            return new JobSuggestionsResponse(readJobs(cached.get().getResponseJson()).stream().limit(MAX_RESULTS).toList(), true);
         }
 
         // 2. search keywords = first few resume skills that the skill dictionary recognises
