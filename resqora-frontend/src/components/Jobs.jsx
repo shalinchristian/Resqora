@@ -11,7 +11,7 @@ export default function Jobs({ resumeId, title = 'Matching jobs', note, style })
     if (!resumeId) return
     setState({ loading: true })
     api.jobs(resumeId)
-      .then((d) => setState({ jobs: d.jobs || [] }))
+      .then((d) => setState({ jobs: (d.jobs || []).slice(0, 5) }))
       .catch((e) => setState({ error: e.status === 503 ? 'Job search is not connected yet. Matching jobs will show here once it is.' : e.message }))
   }, [resumeId])
 
