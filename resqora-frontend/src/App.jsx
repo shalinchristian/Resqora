@@ -40,7 +40,7 @@ function ThemeToggle() {
       onClick={toggle}
       aria-label="Toggle dark mode"
       title={dark ? 'Light mode' : 'Dark mode'}
-      className="w-9 h-9 grid place-items-center rounded-md text-muted hover:text-ink hover:bg-sunken transition active:scale-90 [&>svg]:transition-transform [&>svg]:duration-200 hover:[&>svg]:rotate-45"
+      className="w-11 h-11 grid place-items-center rounded-md text-muted hover:text-ink hover:bg-sunken transition active:scale-90 [&>svg]:transition-transform [&>svg]:duration-200 hover:[&>svg]:rotate-45"
     >
       {dark ? (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
@@ -80,7 +80,7 @@ export default function App() {
           <div className="flex items-center gap-1 sm:gap-2 min-w-0">
             <ThemeToggle />
             {user ? <AccountMenu /> : !['/login', '/register'].includes(pathname) && (
-              <Link to="/login" className="text-sm px-3 h-9 inline-flex items-center rounded-md hover:bg-sunken transition-colors">Log in</Link>
+              <Link to="/login" className="text-[15px] font-medium px-4 h-11 inline-flex items-center rounded-lg border border-line bg-surface hover:bg-sunken transition-colors">Log in</Link>
             )}
           </div>
         </div>
