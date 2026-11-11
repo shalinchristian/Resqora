@@ -185,6 +185,21 @@ class JobSuggestionIntegrationTest {
     }
 
     @Test
+    void capsFreshAndPreviouslyCachedTenJobListsAtFiveWithoutRefreshingCache() throws Exception {
+        String ten = java.util.stream.IntStream.range(0, 10).mapToObj(i ->
+                "{\"title\":\"Java Developer\",\"company\":\"Company " + i
+                + "\",\"location\":\"Pune\",\"matchScore\":100,\"matchedSkills\":[\"Java\"],"
+                + "\"url\":\"https://jobicy.com/" + i + "\",\"source\":\"Jobicy\"}")
+                .collect(java.util.stream.Collectors.joining(",", "[", "]"));
+        cacheRepository.save(new com.resqora.resqora_backend.entity.JobSuggestionCache(resume, ten));
+        mockMvc.perform(get(jobsUrl()).header("Authorization", token))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.jobs.length()").value(5))
+                .andExpect(jsonPath("$.cached").value(true));
+        assertEquals(0, fakeJobs.calls);
+        assertEquals(ten, cacheRepository.findByResumeId(resume.getId()).orElseThrow().getResponseJson());
+    }
+
+    @Test
     void requiresToken() throws Exception {
         mockMvc.perform(get(jobsUrl())).andExpect(status().isUnauthorized());
     }
