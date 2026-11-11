@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-// Runs every real Flyway migration (V1..V13) on an empty H2 database in PostgreSQL mode
+// Runs every real Flyway migration (V1..V14) on an empty H2 database in PostgreSQL mode
 class FlywayMigrationsH2Test {
     @Test
     void allMigrationsRunWithSafeDefaults() throws Exception {
@@ -24,8 +24,8 @@ class FlywayMigrationsH2Test {
         Flyway flyway = Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load();
 
         int applied = flyway.migrate().migrationsExecuted;
-        assertTrue(applied >= 13, "migrations run: " + applied);
-        assertEquals("13", flyway.info().current().getVersion().getVersion());
+        assertTrue(applied >= 14, "migrations run: " + applied);
+        assertEquals("14", flyway.info().current().getVersion().getVersion());
 
         try (Connection connection = dataSource.getConnection(); Statement sql = connection.createStatement()) {
             sql.execute("INSERT INTO users (email, password_hash, name) VALUES ('a@example.com', 'hash', 'A')");
