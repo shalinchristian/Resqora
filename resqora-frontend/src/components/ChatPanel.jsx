@@ -6,8 +6,9 @@ import { Section, Button, ErrorBox } from './ui.jsx'
 
 // Shared chat box, used for one resume and for the dashboard chat across all resumes.
 // send(text, history) must return { reply, remainingToday, limit }.
+// loadHistory() returns { messages: [{ role: 'user' | 'assistant', content }] } (last 20, oldest first); clearHistory() deletes it.
 // kind picks this chat's own daily allowance from GET /api/ai/usage: 'resumeChat' or 'dashboardChat'.
-export default function ChatPanel({ kind = 'resumeChat', title, placeholder, starters = [], send: sendFn, beforeSend, onUsage, showUsage = true, style }) {
+export default function ChatPanel({ kind = 'resumeChat', title, placeholder, starters = [], send: sendFn, beforeSend, onUsage, showUsage = true, style, historyKey, loadHistory, clearHistory }) {
   const { user } = useAuth()
   const onDashboard = useLocation().pathname === '/'
   const aiOn = user?.aiEnabled !== false
@@ -16,7 +17,11 @@ export default function ChatPanel({ kind = 'resumeChat', title, placeholder, sta
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [usage, setUsage] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const [clearing, setClearing] = useState(false)
   const end = useRef(null)
+  const box = useRef(null)
   const inputId = useId()
 
   // show today's allowance before the first message
@@ -27,7 +32,37 @@ export default function ChatPanel({ kind = 'resumeChat', title, placeholder, sta
     }).catch(() => {})
   }, [aiOn, kind])
 
-  useEffect(() => { end.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }) }, [messages, busy])
+  // saved chat: load the last messages when the chat opens (doesn't count toward the daily chats)
+  useEffect(() => {
+    if (!aiOn || !loadHistory) return
+    let live = true
+    setLoading(true); setMessages([]); setConfirming(false)
+    loadHistory()
+      .then((d) => {
+        if (!live) return
+        // server sends { role: 'user' | 'assistant', content }; the chat uses 'model' and text
+        const saved = (d?.messages || [])
+          .map((m) => ({ role: m?.role === 'user' ? 'user' : m?.role === 'assistant' || m?.role === 'model' ? 'model' : null, text: m?.content ?? m?.text ?? '' }))
+          .filter((m) => m.role && m.text)
+        setMessages((now) => (now.length ? now : saved.slice(-20)))
+      })
+      .catch(() => {}) // no saved chat yet, or history isn't available: start empty
+      .finally(() => { if (live) setLoading(false) })
+    return () => { live = false }
+  }, [aiOn, historyKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // keep the newest message in view inside the chat box only, never scroll the page
+  useEffect(() => { const el = box.current; if (el) el.scrollTop = el.scrollHeight }, [messages, busy])
+
+  const clear = async () => {
+    setClearing(true); setError('')
+    try {
+      await clearHistory?.()
+      setMessages([]); setConfirming(false)
+    } catch (e) {
+      setError(e.status === 0 ? e.message : "Couldn't clear the chat. Please try again.")
+    } finally { setClearing(false) }
+  }
 
   const send = async (text, starter) => {
     text = text.trim()
@@ -59,7 +94,8 @@ export default function ChatPanel({ kind = 'resumeChat', title, placeholder, sta
         <p className="text-sm text-muted">AI is turned off, so nothing from your resumes is sent to an AI service. {onDashboard ? 'Turn it back on with the switch above.' : <>You can turn it back on from <Link to="/" className="text-accent hover:underline">your dashboard</Link>.</>}</p>
       ) : (
         <>
-          {messages.length === 0 && starters.length > 0 && (
+          {loading && messages.length === 0 && <p className="text-sm text-muted">Loading your chat...</p>}
+          {!loading && messages.length === 0 && starters.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {starters.map((st) => (
                 <button key={st.text} onClick={() => send(st.text, st)} disabled={busy}
@@ -68,7 +104,7 @@ export default function ChatPanel({ kind = 'resumeChat', title, placeholder, sta
             </div>
           )}
           {messages.length > 0 && (
-            <div className="space-y-3 max-h-[28rem] overflow-y-auto pr-1" aria-live="polite">
+            <div ref={box} className="space-y-3 max-h-[28rem] overflow-y-auto overscroll-contain pr-1" aria-live="polite">
               {messages.map((m, i) => (
                 <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : ''}`}>
                   <p className={`max-w-[85%] text-sm rounded-xl px-3.5 py-2 whitespace-pre-line break-words ${m.role === 'user' ? 'bg-ink text-paper' : 'bg-sunken'}`}>{m.text}</p>
@@ -78,7 +114,21 @@ export default function ChatPanel({ kind = 'resumeChat', title, placeholder, sta
               <div ref={end} />
             </div>
           )}
-          <form onSubmit={(e) => { e.preventDefault(); send(input) }} className="mt-4 flex gap-2">
+          {messages.length > 0 && clearHistory && (
+            confirming ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-sunken px-3 py-2" role="alertdialog" aria-label="Clear this chat?">
+                <p className="text-sm flex-1 min-w-[10rem]">Clear this chat? Your saved messages are deleted for good.</p>
+                <Button variant="ghost" className="h-11 px-4" onClick={() => setConfirming(false)} disabled={clearing}>Cancel</Button>
+                <Button variant="danger" className="h-11 px-4" onClick={clear} disabled={clearing}>{clearing ? 'Clearing...' : 'Clear chat'}</Button>
+              </div>
+            ) : (
+              <div className="mt-2 flex justify-end">
+                <button type="button" onClick={() => setConfirming(true)} disabled={busy}
+                  className="text-[13px] text-muted hover:text-ink px-2 h-11 -mr-2 disabled:opacity-40">Clear chat</button>
+              </div>
+            )
+          )}
+          <form onSubmit={(e) => { e.preventDefault(); send(input) }} className={`${messages.length && clearHistory ? "mt-1" : "mt-4"} flex gap-2`}>
             <label className="sr-only" htmlFor={inputId}>Your question</label>
             <input id={inputId} name="resqora-chat-message" autoComplete="off" autoCorrect="off" data-1p-ignore data-lpignore="true" data-form-type="other" value={input} maxLength={500} onChange={(e) => setInput(e.target.value)} placeholder={placeholder}
               className="flex-1 min-w-0 rounded-lg border border-line bg-surface px-3 h-10 text-sm outline-none focus:border-accent" />

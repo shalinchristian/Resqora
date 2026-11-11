@@ -79,6 +79,10 @@ export const api = {
   match: (id, jobDescription) => request(`/api/resumes/${id}/match`, { method: 'POST', body: { jobDescription } }),
   summary: (id) => request(`/api/resumes/${id}/summary`),
   // asks across all of the user's resumes
+  dashboardChatHistory: () => request('/api/chat/history'),
+  clearDashboardChat: () => request('/api/chat/history', { method: 'DELETE' }),
+  chatHistory: (id) => request(`/api/resumes/${id}/chat/history`),
+  clearChat: (id) => request(`/api/resumes/${id}/chat/history`, { method: 'DELETE' }),
   dashboardChat: (message, history) => request('/api/chat', { method: 'POST', body: { message, history } }),
   chat: (id, message, history, jobDescription) =>
     request(`/api/resumes/${id}/chat`, { method: 'POST', body: { message, history, jobDescription } }),
