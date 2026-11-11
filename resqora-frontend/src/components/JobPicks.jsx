@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import { api } from '../api.js'
 import { Section } from './ui.jsx'
 
-// Up to 3 picks from JobsForce India. Shows nothing while loading, on error, or with no picks,
+// Up to 5 picks from JobsForce India. Shows nothing while loading, on error, or with no picks,
 // so the Jobicy list below always carries on as before.
-// Expects { picks: [{ title, hiring: { display }, location, why, url, applyUrl }] }
+// Expects { jobs: [{ title, hiringName, location, why, url, applyUrl, postedAt, source }] }
 export default function JobPicks({ resumeId }) {
   const [picks, setPicks] = useState([])
 
@@ -13,7 +13,7 @@ export default function JobPicks({ resumeId }) {
     let live = true
     setPicks([])
     api.jobPicks(resumeId)
-      .then((d) => { if (live) setPicks((d?.picks || []).filter((p) => p && p.title && (p.url || p.applyUrl)).slice(0, 3)) })
+      .then((d) => { if (live) setPicks((d?.jobs || d?.picks || []).filter((p) => p && p.title && (p.url || p.applyUrl)).slice(0, 5)) })
       .catch(() => {})
     return () => { live = false }
   }, [resumeId])
@@ -25,7 +25,7 @@ export default function JobPicks({ resumeId }) {
       <ul className="grid gap-3">
         {picks.map((p, i) => {
           const link = p.url || p.applyUrl
-          const hiring = p.hiring?.display
+          const hiring = p.hiringName ?? p.hiring?.display
           return (
             <li key={link} style={{ animationDelay: `${i * 40}ms` }} className="fade-up">
               <a href={link} target="_blank" rel="noreferrer"
