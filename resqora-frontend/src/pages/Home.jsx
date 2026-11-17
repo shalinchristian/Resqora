@@ -33,7 +33,7 @@ export default function Home() {
     <div className="max-w-5xl mx-auto">
       <section className="text-center pt-2 sm:pt-8">
         <h1 className="font-serif text-4xl sm:text-5xl leading-[1.1] tracking-tight max-w-3xl mx-auto">Know what your resume is missing before a recruiter does.</h1>
-        <p className="mt-5 text-muted text-base sm:text-lg max-w-2xl mx-auto">Upload your resume and Resqora scores it out of 100, quotes the exact lines that need work, and lets you ask questions about it. No resume yet? Build one and download it as a PDF or Word file.</p>
+        <p className="mt-5 text-muted text-base sm:text-lg max-w-2xl mx-auto">Upload your resume and Resqora scores it out of 100, quotes the exact lines that need work, and lets you ask questions about it.</p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
           <Link to="/register" className="inline-flex items-center h-10 px-5 rounded-md bg-accent text-accent-ink text-sm font-medium hover:brightness-110 transition">Create a free account</Link>
           <Link to="/login" className="inline-flex items-center h-10 px-5 rounded-md border border-line text-sm font-medium hover:bg-sunken transition-colors">Log in</Link>
