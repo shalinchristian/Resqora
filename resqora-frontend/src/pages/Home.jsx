@@ -73,16 +73,11 @@ export default function Home() {
       </section>
 
       <section className="mt-20 sm:mt-28">
-        <Heading title="Ask questions about your resume, or build a new one." />
-        <div className="mt-8 grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Heading title="Ask questions about your resume." />
+        <div className="mt-8 grid sm:grid-cols-3 gap-4">
           <div className="bg-surface border border-line rounded-xl p-5"><h3 className="font-medium">Summary</h3><p className="mt-1.5 text-sm text-muted">A short note at the top of each resume on what's strong and what to fix first.</p></div>
           <div className="bg-surface border border-line rounded-xl p-5"><h3 className="font-medium">Chat</h3><p className="mt-1.5 text-sm text-muted">Ask for interview questions, a rewrite of a weak line, or whether to apply for a job you paste in.</p></div>
           <div className="bg-surface border border-line rounded-xl p-5"><h3 className="font-medium">Preview</h3><p className="mt-1.5 text-sm text-muted">See your original file next to its score while you read the notes.</p></div>
-          <Link to="/build" className="group bg-surface border border-line rounded-xl p-5 hover:border-faint transition-colors">
-            <h3 className="font-medium">Resume builder</h3>
-            <p className="mt-1.5 text-sm text-muted">Fill in a short form, or start from a resume you have. Pick one of five clean formats and download a PDF or Word file.</p>
-            <p className="mt-3 text-sm font-medium text-accent group-hover:underline underline-offset-4">Build a resume ›</p>
-          </Link>
         </div>
         <p className="mt-4 text-sm text-muted">You get 20 AI chats a day. The score itself never uses AI.</p>
       </section>

@@ -221,7 +221,6 @@ export default function Dashboard() {
           <p className="text-sm text-muted mt-1">{data.count} / {data.limit} resumes</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <Link to="/build"><Button variant="ghost">Build a resume</Button></Link>
           {!empty && (
             <Button variant="accent" disabled={uploading || full} onClick={() => fileInput.current.click()}
               title={full ? 'Delete a resume to upload another' : undefined}>
@@ -241,7 +240,6 @@ export default function Dashboard() {
             <p className="font-medium">{uploading ? 'Uploading...' : 'Upload your first resume'}</p>
             <p className="text-sm text-muted mt-1">Drop a PDF or DOCX here, or click to choose one. Max 2 MB.</p>
           </button>
-          <p className="text-sm text-muted text-center">or <Link to="/build" className="text-ink underline-offset-2 hover:underline">build a resume from scratch</Link></p>
           <Welcome />
         </div>
       ) : (

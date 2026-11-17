@@ -11,7 +11,9 @@ import Dashboard from './pages/Dashboard.jsx'
 import ResumeDetail from './pages/ResumeDetail.jsx'
 import Home from './pages/Home.jsx'
 import Account from './pages/Account.jsx'
-import ResumeBuilder from './pages/ResumeBuilder.jsx'
+// Resume builder is hidden for the week of Nov 17, 2026. To turn it back on, uncomment this import
+// and put the /build route below back to <Protected><ResumeBuilder /></Protected>.
+// import ResumeBuilder from './pages/ResumeBuilder.jsx'
 import NotFound from './pages/NotFound.jsx'
 
 function HomeOrDashboard() {
@@ -94,7 +96,8 @@ export default function App() {
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/" element={<HomeOrDashboard />} />
           <Route path="/account" element={<Protected><Account /></Protected>} />
-          <Route path="/build" element={<Protected><ResumeBuilder /></Protected>} />
+          {/* hidden for the week of Nov 17: <Route path="/build" element={<Protected><ResumeBuilder /></Protected>} /> */}
+          <Route path="/build" element={<Navigate to="/" replace />} />
           <Route path="/resumes/:id" element={<Protected><ResumeDetail /></Protected>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
