@@ -6,7 +6,6 @@ import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.time.*;
 import java.util.*;
-import java.util.concurrent.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class JobsForceClientTest {

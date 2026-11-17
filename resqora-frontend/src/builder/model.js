@@ -69,7 +69,6 @@ function bulletsFromDescription(text) {
 
 // Same limits as the backend's BuilderExportRequest, so a prefilled or pasted draft never 400s on download.
 export const LIMITS = { skills: 100, highlights: 20, certifications: 30, achievements: 20, languages: 20, experience: 30, education: 20, projects: 30, bullets: 18, item: 200 }
-const cut = (s, n = LIMITS.item) => (s || '').trim().slice(0, n)
 const capLines = (text, n, len = LIMITS.item) => lines(text).map((l) => l.slice(0, len)).slice(0, n)
 
 // Break one long line into rows of at most `len`, at sentence breaks first, then at spaces.

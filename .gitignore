@@ -4,3 +4,13 @@
 *.iml
 .DS_Store
 Thumbs.db
+
+# Build outputs, dependencies and local secrets (also covered per project)
+target/
+build/
+dist/
+node_modules/
+.env
+.env.*
+!.env.example
+*.log
