@@ -1,9 +1,6 @@
 package com.resqora.resqora_backend.controller;
 
 import com.jayway.jsonpath.JsonPath;
-import com.resqora.resqora_backend.entity.AiUsage;
-import com.resqora.resqora_backend.entity.Resume;
-import com.resqora.resqora_backend.entity.User;
 import com.resqora.resqora_backend.repository.AiUsageRepository;
 import com.resqora.resqora_backend.repository.ResumeRepository;
 import com.resqora.resqora_backend.repository.UserRepository;
@@ -19,8 +16,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
 import java.io.ByteArrayOutputStream;
-import java.time.Instant;
-import java.util.List;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.containsString;

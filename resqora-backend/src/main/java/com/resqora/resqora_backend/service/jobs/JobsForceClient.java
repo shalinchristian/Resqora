@@ -11,7 +11,10 @@ import tools.jackson.databind.json.JsonMapper;
 import java.time.*;
 import java.util.*;
 
-/** keyless public API, no retries. Two pages supply up to 40 candidates for five picks */
+/**
+ * public API, no key, no retries. two pages give up to 40 candidates for five picks.
+ * search summaries hardly ever mention skills, so details() reads the full listing for skill matching.
+ */
 @Component
 public class JobsForceClient {
     public static final String DEFAULT_BASE_URL = "https://jobsforceindia.com/api/public/v1";
@@ -43,18 +46,16 @@ public class JobsForceClient {
             try {
                 body = http.get().uri(uri -> {
                     uri.path("/jobs").queryParam("q", "{q}").queryParam("per_page", PER_PAGE).queryParam("page", current);
-                    if (query.city() != null) uri.queryParam("city", "{city}");
                     if (query.fresher()) uri.queryParam("fresher", true);
                     if (query.internship()) uri.queryParam("job_type", "internship");
                     if (query.experienceYears() != null) uri.queryParam("experience_years", query.experienceYears());
-                    Map<String, Object> values = new HashMap<>();
-                    values.put("q", query.text());
-                    if (query.city() != null) values.put("city", query.city());
-                    return uri.build(values);
+                    return uri.build(Map.of("q", query.text()));
                 }).retrieve().body(String.class);
-            } catch (RestClientResponseException failure) {
-                if (failure.getStatusCode().value() == 429) cooldown(failure);
-                throw failure;
+            } catch (RuntimeException failure) {
+                if (failure instanceof RestClientResponseException http && http.getStatusCode().value() == 429) cooldown(http);
+                // if the second page fails, keep the twenty we already got
+                if (jobs.isEmpty()) throw failure;
+                break;
             }
             JsonNode response = JSON.readTree(body);
             if (!response.path("results").isArray()) throw new IllegalStateException("Invalid JobsForce response");
@@ -74,13 +75,43 @@ public class JobsForceClient {
                 // show the source exactly as given, don't swap in hiring.name/employer
                 jobs.add(new JobsForcePosting(text(job.path("title")), text(job.path("hiring").path("display")),
                         text(location.path("city")), places.isEmpty() ? null : String.join(", ", places),
-                        Objects.requireNonNullElse(text(job.path("summary")), ""), url, apply, posted));
+                        Objects.requireNonNullElse(text(job.path("summary")), ""), url, apply, posted,
+                        validId(text(job.path("id")))));
             }
             int next = response.path("next_page").asInt(0);
             if (!response.path("has_more").asBoolean(false) || next <= page || next > 10) break;
             page = next;
         }
         return List.copyOf(jobs);
+    }
+    /**
+     * the full listing's description, responsibilities, qualifications and skills as one text. only used
+     * for local skill matching (never stored or returned). uses the same request budget, throws on failure.
+     */
+    public String details(String id) {
+        if (validId(id) == null) return null;
+        reserveRequest();
+        String body;
+        try {
+            body = http.get().uri("/jobs/{id}", id).retrieve().body(String.class);
+        } catch (RestClientResponseException failure) {
+            if (failure.getStatusCode().value() == 429) cooldown(failure);
+            throw failure;
+        }
+        JsonNode job = JSON.readTree(body);
+        List<String> parts = new ArrayList<>();
+        String description = text(job.path("description"));
+        if (description != null) parts.add(description);
+        for (String field : List.of("responsibilities", "qualifications", "skills", "skills_preferred")) {
+            for (JsonNode item : job.path(field)) {
+                String value = text(item);
+                if (value != null && !value.isBlank()) parts.add(value);
+            }
+        }
+        return String.join(" ", parts);
+    }
+    static String validId(String id) {
+        return id != null && id.matches("[A-Za-z0-9][A-Za-z0-9_-]{0,199}") ? id : null;
     }
     private synchronized void reserveRequest() {
         Instant now = clock.instant();

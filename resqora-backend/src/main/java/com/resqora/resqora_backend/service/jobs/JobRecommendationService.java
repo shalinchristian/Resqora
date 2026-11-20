@@ -12,12 +12,18 @@ import java.net.URI;
 import java.time.*;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
+import jakarta.annotation.PreDestroy;
 
 @Service
 public class JobRecommendationService {
     static final int MAX_RESULTS = 5;
     static final double MIN_MATCH_SCORE = 40.0;
+    // full listings read per uncached search, in the provider's relevance order. the search summaries
+    // ("Our client is looking for a Junior Software Developer...") hardly ever mention a skill
+    static final int DETAIL_LIMIT = 12;
+    static final Duration DETAIL_WAIT = Duration.ofSeconds(12);
     private static final Logger LOG = LoggerFactory.getLogger(JobRecommendationService.class);
     private final ResumeService resumes;
     private final JobsForceClient client;
@@ -25,6 +31,9 @@ public class JobRecommendationService {
     private final JobMatcher matcher;
     private final JobRecommendationCache cache;
     private final Clock clock;
+    private final ExecutorService details = Executors.newFixedThreadPool(6, task -> {
+        Thread thread = new Thread(task, "jobsforce-details"); thread.setDaemon(true); return thread;
+    });
     @Autowired
     public JobRecommendationService(ResumeService resumes, JobsForceClient client, JobSuggestionService jobicy,
             JobMatcher matcher, JobRecommendationCache cache) {
@@ -41,7 +50,7 @@ public class JobRecommendationService {
         JobsForceQuery query = JobsForceQuery.from(resume, clock);
         if (query.text().isBlank()) return new JobRecommendationsResponse(List.of());
         List<JobsForcePosting> candidates = cache.getOrLoad(id, () -> {
-            try { return client.search(query); }
+            try { return withDetails(client.search(query)); }
             catch (RuntimeException failure) {
                 // don't log bodies, queries or exception messages, they can have resume info in them
                 LOG.warn("JobsForce recommendations unavailable ({})", failure.getClass().getSimpleName());
@@ -58,6 +67,31 @@ public class JobRecommendationService {
         }
         return rank(resume, query, candidates, suggestions);
     }
+    /** adds the full listing text to the first DETAIL_LIMIT postings. if one fails or is slow it keeps its summary */
+    List<JobsForcePosting> withDetails(List<JobsForcePosting> postings) {
+        List<JobsForcePosting> result = new ArrayList<>(postings);
+        List<Integer> indexes = new ArrayList<>();
+        List<Callable<String>> tasks = new ArrayList<>();
+        for (int i = 0; i < result.size() && tasks.size() < DETAIL_LIMIT; i++) {
+            String id = result.get(i).id();
+            if (id == null) continue;
+            indexes.add(i); tasks.add(() -> client.details(id));
+        }
+        if (tasks.isEmpty()) return result;
+        try {
+            List<Future<String>> done = details.invokeAll(tasks, DETAIL_WAIT.toMillis(), TimeUnit.MILLISECONDS);
+            int failed = 0;
+            for (int i = 0; i < done.size(); i++) {
+                try { result.set(indexes.get(i), result.get(indexes.get(i)).withDetails(done.get(i).get())); }
+                catch (ExecutionException | CancellationException failure) { failed++; }
+            }
+            if (failed > 0) LOG.warn("JobsForce details unavailable for {} of {} jobs", failed, done.size());
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
+        return List.copyOf(result);
+    }
+    @PreDestroy void stop() { details.shutdownNow(); }
     JobRecommendationsResponse rank(ParsedResume resume, JobsForceQuery query,
             List<JobsForcePosting> postings, List<JobSuggestion> existing) {
         Set<String> urls = new HashSet<>(), identities = new HashSet<>();
@@ -72,16 +106,13 @@ public class JobRecommendationService {
             if (url == null && apply == null) continue;
             var match = matcher.match(resume.skills(), job.title() + " " + job.summary());
             double title = similarity(query.title(), job.title());
-            boolean city = query.city() != null && JobsForceQuery.normalizeCity(query.city())
-                    .equals(JobsForceQuery.normalizeCity(job.city()));
             long age = job.postedAt() == null ? Long.MAX_VALUE : ChronoUnit.DAYS.between(job.postedAt(), LocalDate.now(clock));
             double recency = age < 0 || age > 30 ? 0 : 1 - age / 30.0;
-            double score = 0.60 * match.matchScore() + 30 * title + (city ? 5 : 0) + 5 * recency;
+            double score = 0.60 * match.matchScore() + 30 * title + 5 * recency;
             if (score < MIN_MATCH_SCORE || (match.matchedSkills().isEmpty() && title < 0.5)) continue;
             List<String> reasons = new ArrayList<>();
             if (!match.matchedSkills().isEmpty()) reasons.add("Matches " + String.join(", ", match.matchedSkills().stream().limit(3).toList()));
             if (title >= 0.5) reasons.add("aligns with your latest role");
-            if (city) reasons.add("in " + query.city());
             ranked.add(new Ranked(new JobRecommendation(job.title(), job.hiringName(), job.location(),
                     String.join("; ", reasons) + ".", url, apply,
                     job.postedAt() == null ? null : job.postedAt().toString(), "JobsForce India"), score));
@@ -90,13 +121,19 @@ public class JobRecommendationService {
                 .thenComparing(r -> r.job().postedAt(), Comparator.nullsLast(Comparator.reverseOrder()))
                 .thenComparing(r -> r.job().title()));
         List<JobRecommendation> result = new ArrayList<>();
+        // for JobsForce the location is part of the identity. one agency ("JobsForce India (recruiting for a
+        // confidential client)") posts the same title in lots of cities and those are separate openings.
+        // against Jobicy, title + company is enough to remove cross-listings (the two sources write places differently)
+        Set<String> picked = new HashSet<>();
         for (Ranked item : ranked) {
             JobRecommendation job = item.job();
             String url = normalizedUrl(job.url()), apply = normalizedUrl(job.applyUrl());
             String identity = identity(job.title(), job.hiringName());
+            String placed = identity == null ? null : identity + "|" + normalize(Objects.requireNonNullElse(job.location(), ""));
             if ((url != null && urls.contains(url)) || (apply != null && urls.contains(apply))
-                    || (identity != null && identities.contains(identity))) continue;
-            add(urls, url); add(urls, apply); add(identities, identity);
+                    || (identity != null && identities.contains(identity))
+                    || (placed != null && picked.contains(placed))) continue;
+            add(urls, url); add(urls, apply); add(picked, placed);
             result.add(job);
             if (result.size() == MAX_RESULTS) break;
         }

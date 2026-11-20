@@ -48,18 +48,18 @@ class JobRecommendationServiceTest {
     @Test void inclusiveFortyPointThresholdAndNoLocationOnlyMatches() {
         ParsedResume fresher = JobsForceQueryTest.resume("Pune", List.of());
         var q = JobsForceQuery.from(fresher, JobsForceQueryTest.CLOCK);
-        // 50% of required skills => 30 points, Pune +5, posted today +5 => exactly 40
-        var result = service.rank(fresher, q, List.of(job("Developer", "At threshold", "Pune", "Java Python", "https://x.com/1", 0),
-                job("Developer", "Below threshold", "Pune", "Java Python", "https://x.com/2", 1),
+        // 60% of the skills = 36 points, posted today +5 = 41. same skills but 31+ days old stays under 40
+        var result = service.rank(fresher, q, List.of(
+                job("Developer", "At threshold", "Pune", "Java SQL Docker Python Kubernetes", "https://x.com/1", 0),
+                job("Developer", "Below threshold", "Pune", "Java SQL Docker Python Kubernetes", "https://x.com/2", 40),
                 job("Nurse", "Location only", "Pune", "Care", "https://x.com/3", 0)), List.of());
         assertEquals(1, result.jobs().size()); assertEquals("At threshold", result.jobs().getFirst().hiringName());
     }
-    @Test void titleThenLocationThenRecencyImproveRank() {
+    @Test void titleThenRecencyImproveRank() {
         var jobs = List.of(job("Java Developer", "Old", "Pune", "Java", "https://x.com/1", 40),
-                job("Java Developer", "Fresh", "Pune", "Java", "https://x.com/2", 0),
-                job("Java Developer", "Other city", "Delhi", "Java", "https://x.com/3", 0),
+                job("Java Developer", "Fresh", "Delhi", "Java", "https://x.com/2", 0),
                 job("Engineer", "Other title", "Pune", "Java", "https://x.com/4", 0));
-        assertEquals(List.of("Fresh", "Other city", "Old", "Other title"), service.rank(resume, query, jobs, List.of()).jobs()
+        assertEquals(List.of("Fresh", "Old", "Other title"), service.rank(resume, query, jobs, List.of()).jobs()
                 .stream().map(JobRecommendation::hiringName).toList());
     }
     @Test void dedupesNormalizedTitleCompanyAndBothUrlsAgainstJobicyAndWithinResults() {
@@ -86,7 +86,7 @@ class JobRecommendationServiceTest {
         var result = service.rank(resume, query, jobs, List.of()).jobs();
         assertEquals(2, result.size()); assertEquals("  Confidential client & recruiter  ", result.getFirst().hiringName());
         assertNull(result.getLast().hiringName()); assertEquals("JobsForce India", result.getFirst().source());
-        assertTrue(result.getFirst().why().contains("Java")); assertTrue(result.getFirst().why().contains("Pune"));
+        assertTrue(result.getFirst().why().contains("Java")); assertFalse(result.getFirst().why().contains("Pune"));
         assertTrue(result.getFirst().why().contains("latest role")); assertFalse(result.getFirst().why().contains("\n"));
     }
     @Test void failuresReturnEmptyWithoutCallingOrChangingJobicy() {
@@ -112,5 +112,62 @@ class JobRecommendationServiceTest {
         when(client.search(any())).thenReturn(List.of(job("Java Developer", "A", "Pune", "Java", "https://x.com/1", 0)));
         when(jobicy.suggest(1L, auth)).thenThrow(new IllegalStateException());
         assertEquals(1, service.recommend(1L, auth).jobs().size());
+    }
+    // the real JobsForce search summaries don't mention skills, they're only in the full listing
+    JobsForcePosting vague(String title, String id, int age) {
+        return new JobsForcePosting(title, "JobsForce India (recruiting for a confidential client)", "Mysuru", "Mysuru",
+                "Our client is looking for a " + title + " to work on exciting projects.",
+                "https://jobsforceindia.com/jobs/" + id, null, LocalDate.now(JobsForceQueryTest.CLOCK).minusDays(age), id);
+    }
+    @Test void fresherWithoutTitleGetsPicksFromTheFullListingSkills() {
+        ParsedResume fresher = JobsForceQueryTest.resume("Anand, Gujarat", List.of());
+        when(resumes.getParsedResume(2L, auth)).thenReturn(fresher);
+        when(jobicy.suggest(2L, auth)).thenReturn(new JobSuggestionsResponse(List.of(), false));
+        when(client.search(any())).thenReturn(List.of(vague("Junior Software Developer", "dev", 2),
+                vague("Junior Data Analyst", "analyst", 1), vague("Web Developer", "web", 3)));
+        when(client.details("dev")).thenReturn("Programming skills in Java. Experience with SQL databases. Docker is a plus.");
+        when(client.details("analyst")).thenReturn("Excel, Power BI, Tableau and statistics. Some SQL.");
+        when(client.details("web")).thenThrow(new IllegalStateException("timeout"));
+        // before reading the full listing there were no skills in title + summary so nothing got to 40
+        assertTrue(service.rank(fresher, JobsForceQuery.from(fresher, JobsForceQueryTest.CLOCK),
+                client.search(null), List.of()).jobs().isEmpty());
+        var result = service.recommend(2L, auth);
+        assertEquals(1, result.jobs().size());
+        assertEquals("Junior Software Developer", result.jobs().getFirst().title());
+        String why = result.jobs().getFirst().why();
+        assertTrue(why.startsWith("Matches ") && why.contains("Java") && why.contains("SQL"), why);
+    }
+    @Test void readsAtMostTheDetailLimitOfFullListings() {
+        List<JobsForcePosting> jobs = IntStream.range(0, 30).mapToObj(i -> vague("Developer", "job-" + i, 0)).toList();
+        when(client.details(anyString())).thenReturn("Java");
+        var enriched = service.withDetails(jobs);
+        verify(client, times(JobRecommendationService.DETAIL_LIMIT)).details(anyString());
+        assertTrue(enriched.get(0).summary().endsWith("Java"));
+        assertFalse(enriched.get(JobRecommendationService.DETAIL_LIMIT).summary().contains("Java"));
+        assertEquals(30, enriched.size());
+    }
+    @Test void postingsWithoutIdsAreLeftAlone() {
+        var jobs = List.of(job("Java Developer", "A", "Pune", "Java", "https://x.com/1", 0));
+        assertEquals(jobs, service.withDetails(jobs)); verify(client, never()).details(any());
+    }
+    @Test void sameAgencyTitleInDifferentCitiesIsSeparateButSameCityCollapses() {
+        String agency = "JobsForce India (recruiting for a confidential client)";
+        var jobs = List.of(job("Java Developer", agency, "Mysuru", "Java", "https://x.com/1", 0),
+                job("Java Developer", agency, "Mumbai", "Java", "https://x.com/2", 0),
+                job("Java Developer", agency, "Delhi", "Java", "https://x.com/3", 1),
+                job("Java  developer", agency.toUpperCase(), "MYSURU", "Java", "https://x.com/4", 2),
+                job("Java Developer", agency, null, "Java", "https://x.com/5", 0),
+                job("Java Developer", agency, null, "Java", "https://x.com/6", 0));
+        var result = service.rank(resume, query, jobs, List.of()).jobs();
+        assertEquals(4, result.size());
+        assertEquals(Set.of("https://x.com/1", "https://x.com/2", "https://x.com/3", "https://x.com/5"),
+                new HashSet<>(result.stream().map(JobRecommendation::url).toList()));
+    }
+    @Test void jobicyTitleCompanyStillRemovesTheJobInAnyCity() {
+        List<JobSuggestion> existing = List.of(new JobSuggestion("Java Developer", "Acme", "Remote", 100, List.of(),
+                "https://jobicy.com/1", "Jobicy"));
+        var jobs = List.of(job("Java Developer", "Acme", "Pune", "Java", "https://x.com/1", 0),
+                job("Java Developer", "Acme", "Delhi", "Java", "https://x.com/2", 0));
+        assertTrue(service.rank(resume, query, jobs, existing).jobs().isEmpty());
     }
 }

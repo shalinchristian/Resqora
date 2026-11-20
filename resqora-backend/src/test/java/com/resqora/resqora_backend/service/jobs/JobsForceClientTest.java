@@ -6,7 +6,6 @@ import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.time.*;
 import java.util.*;
-import java.util.concurrent.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class JobsForceClientTest {
@@ -15,6 +14,13 @@ class JobsForceClientTest {
     private String body;
     private int status;
     private final List<String> queries = new ArrayList<>();
+    private final List<String> detailPaths = new ArrayList<>();
+    private int pageTwoStatus = 200;
+    static final String DETAIL = """
+        {"id":"junior-software-developer-mysuru","title":"Junior Software Developer","summary":"Our client is looking for a Junior Software Developer.",
+        "description":"Work with senior developers.","responsibilities":["Write clean code."],"qualifications":["Degree in Computer Science."],
+        "skills":["Programming skills in Java and Python."],"skills_preferred":["Experience with SQL databases."],"benefits":["Flexible hours."]}
+        """;
     static final String JOB = """
         {"title":"Java Developer","hiring":{"type":"agency","name":"Do not use","employer":"confidential","display":"  JobsForce India for a confidential client & team  "},
         "location":{"city":"Pune","state":"Maharashtra","country":"India","remote":false},
@@ -26,7 +32,13 @@ class JobsForceClientTest {
         server.createContext("/api/public/v1/jobs", exchange -> {
             queries.add(exchange.getRequestURI().getQuery());
             byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-            if (status == 429) exchange.getResponseHeaders().add("Retry-After", "90");
+            int code = exchange.getRequestURI().getQuery().matches("(?:.*&)?page=2(?:&.*)?") ? pageTwoStatus : status;
+            if (code == 429) exchange.getResponseHeaders().add("Retry-After", "90");
+            exchange.sendResponseHeaders(code, bytes.length); exchange.getResponseBody().write(bytes); exchange.close();
+        });
+        server.createContext("/api/public/v1/jobs/", exchange -> {
+            detailPaths.add(exchange.getRequestURI().getPath());
+            byte[] bytes = DETAIL.getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(status, bytes.length); exchange.getResponseBody().write(bytes); exchange.close();
         });
         server.start(); base = "http://127.0.0.1:" + server.getAddress().getPort() + "/api/public/v1";
@@ -41,6 +53,7 @@ class JobsForceClientTest {
         assertEquals("https://jobsforceindia.com/apply/java", job.applyUrl());
         assertTrue(queries.getFirst().contains("q=Java Developer Spring Boot SQL"));
         assertTrue(queries.getFirst().contains("experience_years=2.5")); assertTrue(queries.getFirst().contains("per_page=20"));
+        assertFalse(queries.getFirst().contains("city="));
     }
     @Test void absentDisplayNeverUsesNameOrInventsCompany() {
         body = body.replace("\"display\":\"  JobsForce India for a confidential client & team  \",", "");
@@ -83,6 +96,30 @@ class JobsForceClientTest {
         for (int i = 0; i < 100; i++) client.search(query());
         assertThrows(RuntimeException.class, () -> client.search(query())); assertEquals(100, queries.size());
         clock.now = clock.now.plusSeconds(60); client.search(query()); assertEquals(101, queries.size());
+    }
+    @Test void searchKeepsTheJobIdForTheFullListing() {
+        body = body.replace("{\"title\":\"Java Developer\"", "{\"id\":\"java-developer-pune\",\"title\":\"Java Developer\"");
+        assertEquals("java-developer-pune", new JobsForceClient(base).search(query()).getFirst().id());
+    }
+    @Test void detailsReadsDescriptionListsAndSkillsButNotBenefits() {
+        String text = new JobsForceClient(base).details("junior-software-developer-mysuru");
+        assertEquals(List.of("/api/public/v1/jobs/junior-software-developer-mysuru"), detailPaths);
+        assertTrue(text.contains("Work with senior developers.")); assertTrue(text.contains("Write clean code."));
+        assertTrue(text.contains("Degree in Computer Science.")); assertTrue(text.contains("Java and Python"));
+        assertTrue(text.contains("SQL databases")); assertFalse(text.contains("Flexible hours"));
+    }
+    @Test void detailsRejectsUnsafeIdsWithoutARequest() {
+        JobsForceClient client = new JobsForceClient(base);
+        assertNull(client.details("../admin")); assertNull(client.details(null)); assertNull(client.details("a b"));
+        assertTrue(detailPaths.isEmpty());
+    }
+    @Test void detailsFailureThrowsSoTheServiceKeepsTheSummary() {
+        status = 503; assertThrows(RuntimeException.class, () -> new JobsForceClient(base).details("x"));
+    }
+    @Test void failedSecondPageKeepsTheFirstPage() {
+        body = "{\"results\":[" + JOB + "],\"has_more\":true,\"next_page\":2}";
+        pageTwoStatus = 503;
+        assertEquals(1, new JobsForceClient(base).search(query()).size()); assertEquals(2, queries.size());
     }
     static class MutableClock extends Clock {
         Instant now = Instant.parse("2026-11-11T12:00:00Z");
