@@ -113,4 +113,41 @@ class JobRecommendationServiceTest {
         when(jobicy.suggest(1L, auth)).thenThrow(new IllegalStateException());
         assertEquals(1, service.recommend(1L, auth).jobs().size());
     }
+    // Real JobsForce search summaries name no skills; the skills are only in the full listing.
+    JobsForcePosting vague(String title, String id, int age) {
+        return new JobsForcePosting(title, "JobsForce India (recruiting for a confidential client)", "Mysuru", "Mysuru",
+                "Our client is looking for a " + title + " to work on exciting projects.",
+                "https://jobsforceindia.com/jobs/" + id, null, LocalDate.now(JobsForceQueryTest.CLOCK).minusDays(age), id);
+    }
+    @Test void fresherWithoutTitleGetsPicksFromTheFullListingSkills() {
+        ParsedResume fresher = JobsForceQueryTest.resume("Anand, Gujarat", List.of());
+        when(resumes.getParsedResume(2L, auth)).thenReturn(fresher);
+        when(jobicy.suggest(2L, auth)).thenReturn(new JobSuggestionsResponse(List.of(), false));
+        when(client.search(any())).thenReturn(List.of(vague("Junior Software Developer", "dev", 2),
+                vague("Junior Data Analyst", "analyst", 1), vague("Web Developer", "web", 3)));
+        when(client.details("dev")).thenReturn("Programming skills in Java. Experience with SQL databases. Docker is a plus.");
+        when(client.details("analyst")).thenReturn("Excel, Power BI, Tableau and statistics. Some SQL.");
+        when(client.details("web")).thenThrow(new IllegalStateException("timeout"));
+        // Before the full listing: no skills anywhere in title + summary, so nothing could reach 40.
+        assertTrue(service.rank(fresher, JobsForceQuery.from(fresher, JobsForceQueryTest.CLOCK),
+                client.search(null), List.of()).jobs().isEmpty());
+        var result = service.recommend(2L, auth);
+        assertEquals(1, result.jobs().size());
+        assertEquals("Junior Software Developer", result.jobs().getFirst().title());
+        String why = result.jobs().getFirst().why();
+        assertTrue(why.startsWith("Matches ") && why.contains("Java") && why.contains("SQL"), why);
+    }
+    @Test void readsAtMostTheDetailLimitOfFullListings() {
+        List<JobsForcePosting> jobs = IntStream.range(0, 30).mapToObj(i -> vague("Developer", "job-" + i, 0)).toList();
+        when(client.details(anyString())).thenReturn("Java");
+        var enriched = service.withDetails(jobs);
+        verify(client, times(JobRecommendationService.DETAIL_LIMIT)).details(anyString());
+        assertTrue(enriched.get(0).summary().endsWith("Java"));
+        assertFalse(enriched.get(JobRecommendationService.DETAIL_LIMIT).summary().contains("Java"));
+        assertEquals(30, enriched.size());
+    }
+    @Test void postingsWithoutIdsAreLeftAlone() {
+        var jobs = List.of(job("Java Developer", "A", "Pune", "Java", "https://x.com/1", 0));
+        assertEquals(jobs, service.withDetails(jobs)); verify(client, never()).details(any());
+    }
 }

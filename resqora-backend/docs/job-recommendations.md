@@ -16,7 +16,9 @@ Reviewed https://jobsforceindia.com/developers and https://jobsforceindia.com/op
 
 Query = latest dated experience title + first up to three distinct parsed skills, capped at the API's 200-character limit. The search covers all of India and does not filter by the resume's city. Experience comes from parsed experience date ranges, not an AI guess. Supports month-name/year, MM/YYYY, YYYY-MM and year-only ranges (year-only is January), and Present/Current/Ongoing/Now. Overlapping employment intervals are unioned; future endpoints are clamped to today. Less than one known year sets `fresher=true`; internships-only also set `job_type=internship`. Experienced candidates send `experience_years` (one decimal, max 50). Unknown/invalid professional dates omit both experience and fresher filters rather than inventing a value. No name, email, phone, company names or full resume text is sent.
 
-Fetches up to **40 candidates** (two pages of 20; only follows `has_more`/`next_page`), not merely five. There is no AI rerank. The rule-based score out of 100 is:
+Fetches up to **40 candidates** (two pages of 20; only follows `has_more`/`next_page`), not merely five. If the second page fails, the first page's candidates are still used.
+
+Search summaries almost never name a skill (for example "Our client is looking for a Junior Software Developer to work on exciting projects"), so matching on title + summary scored every posting 0 and nobody without a strongly matching title got picks. The service therefore reads the full listing (`GET /jobs/{id}`) for the first **12** candidates in the provider's relevance order, six at a time, waiting at most 12 seconds in total. Their description, responsibilities, qualifications, skills and preferred skills are added to the text that is matched against the resume skills. Benefits are ignored. A listing that fails or is too slow keeps its summary only. This text is held only in the in-memory cache and is never returned or stored. There is no AI rerank. The rule-based score out of 100 is:
 
 - 60% of existing `JobMatcher.matchScore` (canonical skill coverage);
 - 30 × token-Jaccard title similarity, ignoring seniority words;
@@ -28,7 +30,7 @@ Dedupe against the **actual five Jobicy suggestions** returned by the existing s
 
 ## Operational behaviour
 
-- Five-second connect/read timeouts; no HTTP retries. At most two requests per uncached search. Per-instance sliding-window budget of 100 requests/minute is deliberately below the provider's 120/IP/minute limit. A 429 honours numeric Retry-After (minimum 60 seconds), failing fast during cooldown. Current single-instance Render deployment shares this one limiter; multiple replicas sharing an IP would need a shared limiter.
+- Five-second connect/read timeouts; no HTTP retries. At most two search requests plus 12 full-listing requests per uncached resume. Per-instance sliding-window budget of 100 requests/minute is deliberately below the provider's 120/IP/minute limit. A 429 honours numeric Retry-After (minimum 60 seconds), failing fast during cooldown. Current single-instance Render deployment shares this one limiter; multiple replicas sharing an IP would need a shared limiter.
 - Bounded process-local per-resume cache (1000 entries); results valid for **12 hours**. Proactive minute-by-minute cleanup removes expired public job data even without traffic (normally ~12h 1m total retention, below 24h). Cache hits always follow the ownership check. Outages are negatively cached for only 60 seconds to prevent storms. Restart loses the cache. No JobsForce data is stored in PostgreSQL or files; **no Flyway migration**, so no V14/V15 conflict.
 - Optional base URL: `resqora.jobs.jobsforce-base-url` (default `https://jobsforceindia.com/api/public/v1`), useful for local mock HTTP tests.
 

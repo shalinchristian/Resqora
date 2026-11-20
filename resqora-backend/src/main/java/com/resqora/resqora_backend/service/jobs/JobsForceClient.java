@@ -11,7 +11,10 @@ import tools.jackson.databind.json.JsonMapper;
 import java.time.*;
 import java.util.*;
 
-/** Keyless public API; no retries. Two pages supply up to 40 candidates for five picks. */
+/**
+ * Keyless public API; no retries. Two pages supply up to 40 candidates for five picks.
+ * Search summaries rarely name any skills, so details() reads the full listing for skill matching.
+ */
 @Component
 public class JobsForceClient {
     public static final String DEFAULT_BASE_URL = "https://jobsforceindia.com/api/public/v1";
@@ -48,9 +51,11 @@ public class JobsForceClient {
                     if (query.experienceYears() != null) uri.queryParam("experience_years", query.experienceYears());
                     return uri.build(Map.of("q", query.text()));
                 }).retrieve().body(String.class);
-            } catch (RestClientResponseException failure) {
-                if (failure.getStatusCode().value() == 429) cooldown(failure);
-                throw failure;
+            } catch (RuntimeException failure) {
+                if (failure instanceof RestClientResponseException http && http.getStatusCode().value() == 429) cooldown(http);
+                // A failed second page must not throw away the twenty candidates already read.
+                if (jobs.isEmpty()) throw failure;
+                break;
             }
             JsonNode response = JSON.readTree(body);
             if (!response.path("results").isArray()) throw new IllegalStateException("Invalid JobsForce response");
@@ -70,13 +75,43 @@ public class JobsForceClient {
                 // Exact source attribution. Never substitute hiring.name/employer for display.
                 jobs.add(new JobsForcePosting(text(job.path("title")), text(job.path("hiring").path("display")),
                         text(location.path("city")), places.isEmpty() ? null : String.join(", ", places),
-                        Objects.requireNonNullElse(text(job.path("summary")), ""), url, apply, posted));
+                        Objects.requireNonNullElse(text(job.path("summary")), ""), url, apply, posted,
+                        validId(text(job.path("id")))));
             }
             int next = response.path("next_page").asInt(0);
             if (!response.path("has_more").asBoolean(false) || next <= page || next > 10) break;
             page = next;
         }
         return List.copyOf(jobs);
+    }
+    /**
+     * The full listing's description, responsibilities, qualifications and skills as one text, used only
+     * for local skill matching (never stored or returned). Shares the request budget; throws on failure.
+     */
+    public String details(String id) {
+        if (validId(id) == null) return null;
+        reserveRequest();
+        String body;
+        try {
+            body = http.get().uri("/jobs/{id}", id).retrieve().body(String.class);
+        } catch (RestClientResponseException failure) {
+            if (failure.getStatusCode().value() == 429) cooldown(failure);
+            throw failure;
+        }
+        JsonNode job = JSON.readTree(body);
+        List<String> parts = new ArrayList<>();
+        String description = text(job.path("description"));
+        if (description != null) parts.add(description);
+        for (String field : List.of("responsibilities", "qualifications", "skills", "skills_preferred")) {
+            for (JsonNode item : job.path(field)) {
+                String value = text(item);
+                if (value != null && !value.isBlank()) parts.add(value);
+            }
+        }
+        return String.join(" ", parts);
+    }
+    static String validId(String id) {
+        return id != null && id.matches("[A-Za-z0-9][A-Za-z0-9_-]{0,199}") ? id : null;
     }
     private synchronized void reserveRequest() {
         Instant now = clock.instant();

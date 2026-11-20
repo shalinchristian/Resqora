@@ -12,12 +12,18 @@ import java.net.URI;
 import java.time.*;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
+import jakarta.annotation.PreDestroy;
 
 @Service
 public class JobRecommendationService {
     static final int MAX_RESULTS = 5;
     static final double MIN_MATCH_SCORE = 40.0;
+    // Full listings read per uncached search, in the provider's relevance order. Their search summaries
+    // ("Our client is looking for a Junior Software Developer...") almost never name a skill.
+    static final int DETAIL_LIMIT = 12;
+    static final Duration DETAIL_WAIT = Duration.ofSeconds(12);
     private static final Logger LOG = LoggerFactory.getLogger(JobRecommendationService.class);
     private final ResumeService resumes;
     private final JobsForceClient client;
@@ -25,6 +31,9 @@ public class JobRecommendationService {
     private final JobMatcher matcher;
     private final JobRecommendationCache cache;
     private final Clock clock;
+    private final ExecutorService details = Executors.newFixedThreadPool(6, task -> {
+        Thread thread = new Thread(task, "jobsforce-details"); thread.setDaemon(true); return thread;
+    });
     @Autowired
     public JobRecommendationService(ResumeService resumes, JobsForceClient client, JobSuggestionService jobicy,
             JobMatcher matcher, JobRecommendationCache cache) {
@@ -41,7 +50,7 @@ public class JobRecommendationService {
         JobsForceQuery query = JobsForceQuery.from(resume, clock);
         if (query.text().isBlank()) return new JobRecommendationsResponse(List.of());
         List<JobsForcePosting> candidates = cache.getOrLoad(id, () -> {
-            try { return client.search(query); }
+            try { return withDetails(client.search(query)); }
             catch (RuntimeException failure) {
                 // No bodies, queries or exception messages: those can contain resume information.
                 LOG.warn("JobsForce recommendations unavailable ({})", failure.getClass().getSimpleName());
@@ -58,6 +67,31 @@ public class JobRecommendationService {
         }
         return rank(resume, query, candidates, suggestions);
     }
+    /** Adds the full listing text to the first DETAIL_LIMIT postings; a failed or slow listing keeps its summary. */
+    List<JobsForcePosting> withDetails(List<JobsForcePosting> postings) {
+        List<JobsForcePosting> result = new ArrayList<>(postings);
+        List<Integer> indexes = new ArrayList<>();
+        List<Callable<String>> tasks = new ArrayList<>();
+        for (int i = 0; i < result.size() && tasks.size() < DETAIL_LIMIT; i++) {
+            String id = result.get(i).id();
+            if (id == null) continue;
+            indexes.add(i); tasks.add(() -> client.details(id));
+        }
+        if (tasks.isEmpty()) return result;
+        try {
+            List<Future<String>> done = details.invokeAll(tasks, DETAIL_WAIT.toMillis(), TimeUnit.MILLISECONDS);
+            int failed = 0;
+            for (int i = 0; i < done.size(); i++) {
+                try { result.set(indexes.get(i), result.get(indexes.get(i)).withDetails(done.get(i).get())); }
+                catch (ExecutionException | CancellationException failure) { failed++; }
+            }
+            if (failed > 0) LOG.warn("JobsForce details unavailable for {} of {} jobs", failed, done.size());
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
+        return List.copyOf(result);
+    }
+    @PreDestroy void stop() { details.shutdownNow(); }
     JobRecommendationsResponse rank(ParsedResume resume, JobsForceQuery query,
             List<JobsForcePosting> postings, List<JobSuggestion> existing) {
         Set<String> urls = new HashSet<>(), identities = new HashSet<>();
