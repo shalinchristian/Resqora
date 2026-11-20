@@ -150,4 +150,24 @@ class JobRecommendationServiceTest {
         var jobs = List.of(job("Java Developer", "A", "Pune", "Java", "https://x.com/1", 0));
         assertEquals(jobs, service.withDetails(jobs)); verify(client, never()).details(any());
     }
+    @Test void sameAgencyTitleInDifferentCitiesIsSeparateButSameCityCollapses() {
+        String agency = "JobsForce India (recruiting for a confidential client)";
+        var jobs = List.of(job("Java Developer", agency, "Mysuru", "Java", "https://x.com/1", 0),
+                job("Java Developer", agency, "Mumbai", "Java", "https://x.com/2", 0),
+                job("Java Developer", agency, "Delhi", "Java", "https://x.com/3", 1),
+                job("Java  developer", agency.toUpperCase(), "MYSURU", "Java", "https://x.com/4", 2),
+                job("Java Developer", agency, null, "Java", "https://x.com/5", 0),
+                job("Java Developer", agency, null, "Java", "https://x.com/6", 0));
+        var result = service.rank(resume, query, jobs, List.of()).jobs();
+        assertEquals(4, result.size());
+        assertEquals(Set.of("https://x.com/1", "https://x.com/2", "https://x.com/3", "https://x.com/5"),
+                new HashSet<>(result.stream().map(JobRecommendation::url).toList()));
+    }
+    @Test void jobicyTitleCompanyStillRemovesTheJobInAnyCity() {
+        List<JobSuggestion> existing = List.of(new JobSuggestion("Java Developer", "Acme", "Remote", 100, List.of(),
+                "https://jobicy.com/1", "Jobicy"));
+        var jobs = List.of(job("Java Developer", "Acme", "Pune", "Java", "https://x.com/1", 0),
+                job("Java Developer", "Acme", "Delhi", "Java", "https://x.com/2", 0));
+        assertTrue(service.rank(resume, query, jobs, existing).jobs().isEmpty());
+    }
 }

@@ -121,13 +121,19 @@ public class JobRecommendationService {
                 .thenComparing(r -> r.job().postedAt(), Comparator.nullsLast(Comparator.reverseOrder()))
                 .thenComparing(r -> r.job().title()));
         List<JobRecommendation> result = new ArrayList<>();
+        // Within JobsForce the location is part of the identity: one agency ("JobsForce India (recruiting for a
+        // confidential client)") lists the same title in many cities, and those are separate openings.
+        // Against Jobicy, title + company alone still removes cross-listings (the two sources word places differently).
+        Set<String> picked = new HashSet<>();
         for (Ranked item : ranked) {
             JobRecommendation job = item.job();
             String url = normalizedUrl(job.url()), apply = normalizedUrl(job.applyUrl());
             String identity = identity(job.title(), job.hiringName());
+            String placed = identity == null ? null : identity + "|" + normalize(Objects.requireNonNullElse(job.location(), ""));
             if ((url != null && urls.contains(url)) || (apply != null && urls.contains(apply))
-                    || (identity != null && identities.contains(identity))) continue;
-            add(urls, url); add(urls, apply); add(identities, identity);
+                    || (identity != null && identities.contains(identity))
+                    || (placed != null && picked.contains(placed))) continue;
+            add(urls, url); add(urls, apply); add(picked, placed);
             result.add(job);
             if (result.size() == MAX_RESULTS) break;
         }
