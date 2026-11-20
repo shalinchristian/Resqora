@@ -8,12 +8,12 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.regex.*;
 
-/** Sends role/skills/city only, never names, contact details or the resume text. */
+/** Sends role and skills only, never names, contact details, city or the resume text. */
 public record JobsForceQuery(String title, List<String> skills, String city, boolean fresher,
         boolean internship, Double experienceYears) {
     private static final Pattern DATE = Pattern.compile(
             "(?i)(?:([a-z]{3,9})\\.?\\s+|(?:(\\d{1,2})/))?((?:19|20)\\d{2})(?:-(\\d{2})(?!\\d))?|present|current|ongoing|now");
-    // Deliberately conservative: an unknown/foreign location is omitted rather than sent as an Indian city.
+    // Parsed from the resume, but not sent to JobsForce or used in ranking.
     private static final List<String> CITIES = List.of("New Delhi", "Navi Mumbai", "Greater Noida",
             "Bengaluru", "Bangalore", "Mumbai", "Bombay", "Delhi", "Hyderabad", "Chennai", "Madras",
             "Pune", "Kolkata", "Calcutta", "Ahmedabad", "Gurugram", "Gurgaon", "Noida", "Bhubaneswar",

@@ -40,6 +40,7 @@ class JobsForceClientTest {
         assertEquals("https://jobsforceindia.com/apply/java", job.applyUrl());
         assertTrue(queries.getFirst().contains("q=Java Developer Spring Boot SQL"));
         assertTrue(queries.getFirst().contains("experience_years=2.5")); assertTrue(queries.getFirst().contains("per_page=20"));
+        assertFalse(queries.getFirst().contains("city="));
     }
     @Test void absentDisplayNeverUsesNameOrInventsCompany() {
         body = body.replace("\"display\":\"  JobsForce India for a confidential client & team  \",", "");

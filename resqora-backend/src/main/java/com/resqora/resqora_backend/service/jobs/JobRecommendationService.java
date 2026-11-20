@@ -72,16 +72,13 @@ public class JobRecommendationService {
             if (url == null && apply == null) continue;
             var match = matcher.match(resume.skills(), job.title() + " " + job.summary());
             double title = similarity(query.title(), job.title());
-            boolean city = query.city() != null && JobsForceQuery.normalizeCity(query.city())
-                    .equals(JobsForceQuery.normalizeCity(job.city()));
             long age = job.postedAt() == null ? Long.MAX_VALUE : ChronoUnit.DAYS.between(job.postedAt(), LocalDate.now(clock));
             double recency = age < 0 || age > 30 ? 0 : 1 - age / 30.0;
-            double score = 0.60 * match.matchScore() + 30 * title + (city ? 5 : 0) + 5 * recency;
+            double score = 0.60 * match.matchScore() + 30 * title + 5 * recency;
             if (score < MIN_MATCH_SCORE || (match.matchedSkills().isEmpty() && title < 0.5)) continue;
             List<String> reasons = new ArrayList<>();
             if (!match.matchedSkills().isEmpty()) reasons.add("Matches " + String.join(", ", match.matchedSkills().stream().limit(3).toList()));
             if (title >= 0.5) reasons.add("aligns with your latest role");
-            if (city) reasons.add("in " + query.city());
             ranked.add(new Ranked(new JobRecommendation(job.title(), job.hiringName(), job.location(),
                     String.join("; ", reasons) + ".", url, apply,
                     job.postedAt() == null ? null : job.postedAt().toString(), "JobsForce India"), score));

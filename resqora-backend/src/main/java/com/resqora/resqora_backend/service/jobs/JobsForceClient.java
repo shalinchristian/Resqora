@@ -43,14 +43,10 @@ public class JobsForceClient {
             try {
                 body = http.get().uri(uri -> {
                     uri.path("/jobs").queryParam("q", "{q}").queryParam("per_page", PER_PAGE).queryParam("page", current);
-                    if (query.city() != null) uri.queryParam("city", "{city}");
                     if (query.fresher()) uri.queryParam("fresher", true);
                     if (query.internship()) uri.queryParam("job_type", "internship");
                     if (query.experienceYears() != null) uri.queryParam("experience_years", query.experienceYears());
-                    Map<String, Object> values = new HashMap<>();
-                    values.put("q", query.text());
-                    if (query.city() != null) values.put("city", query.city());
-                    return uri.build(values);
+                    return uri.build(Map.of("q", query.text()));
                 }).retrieve().body(String.class);
             } catch (RestClientResponseException failure) {
                 if (failure.getStatusCode().value() == 429) cooldown(failure);

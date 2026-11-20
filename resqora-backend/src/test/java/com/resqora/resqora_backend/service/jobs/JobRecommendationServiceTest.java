@@ -48,18 +48,18 @@ class JobRecommendationServiceTest {
     @Test void inclusiveFortyPointThresholdAndNoLocationOnlyMatches() {
         ParsedResume fresher = JobsForceQueryTest.resume("Pune", List.of());
         var q = JobsForceQuery.from(fresher, JobsForceQueryTest.CLOCK);
-        // 50% of required skills => 30 points; Pune +5; posted today +5 => exactly 40.
-        var result = service.rank(fresher, q, List.of(job("Developer", "At threshold", "Pune", "Java Python", "https://x.com/1", 0),
-                job("Developer", "Below threshold", "Pune", "Java Python", "https://x.com/2", 1),
+        // 60% of required skills => 36 points; posted today +5 => 41. The same skills 31+ days old stay below 40.
+        var result = service.rank(fresher, q, List.of(
+                job("Developer", "At threshold", "Pune", "Java SQL Docker Python Kubernetes", "https://x.com/1", 0),
+                job("Developer", "Below threshold", "Pune", "Java SQL Docker Python Kubernetes", "https://x.com/2", 40),
                 job("Nurse", "Location only", "Pune", "Care", "https://x.com/3", 0)), List.of());
         assertEquals(1, result.jobs().size()); assertEquals("At threshold", result.jobs().getFirst().hiringName());
     }
-    @Test void titleThenLocationThenRecencyImproveRank() {
+    @Test void titleThenRecencyImproveRank() {
         var jobs = List.of(job("Java Developer", "Old", "Pune", "Java", "https://x.com/1", 40),
-                job("Java Developer", "Fresh", "Pune", "Java", "https://x.com/2", 0),
-                job("Java Developer", "Other city", "Delhi", "Java", "https://x.com/3", 0),
+                job("Java Developer", "Fresh", "Delhi", "Java", "https://x.com/2", 0),
                 job("Engineer", "Other title", "Pune", "Java", "https://x.com/4", 0));
-        assertEquals(List.of("Fresh", "Other city", "Old", "Other title"), service.rank(resume, query, jobs, List.of()).jobs()
+        assertEquals(List.of("Fresh", "Old", "Other title"), service.rank(resume, query, jobs, List.of()).jobs()
                 .stream().map(JobRecommendation::hiringName).toList());
     }
     @Test void dedupesNormalizedTitleCompanyAndBothUrlsAgainstJobicyAndWithinResults() {
@@ -86,7 +86,7 @@ class JobRecommendationServiceTest {
         var result = service.rank(resume, query, jobs, List.of()).jobs();
         assertEquals(2, result.size()); assertEquals("  Confidential client & recruiter  ", result.getFirst().hiringName());
         assertNull(result.getLast().hiringName()); assertEquals("JobsForce India", result.getFirst().source());
-        assertTrue(result.getFirst().why().contains("Java")); assertTrue(result.getFirst().why().contains("Pune"));
+        assertTrue(result.getFirst().why().contains("Java")); assertFalse(result.getFirst().why().contains("Pune"));
         assertTrue(result.getFirst().why().contains("latest role")); assertFalse(result.getFirst().why().contains("\n"));
     }
     @Test void failuresReturnEmptyWithoutCallingOrChangingJobicy() {

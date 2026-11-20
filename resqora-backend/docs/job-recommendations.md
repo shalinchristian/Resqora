@@ -3,7 +3,7 @@
 `GET /api/resumes/{resumeId}/job-recommendations` requires the existing JWT. The resume must belong to the caller (otherwise 404, including cached requests); no token is 401. It does not use AI or consume AI daily limits.
 
 ```json
-{"jobs":[{"title":"Java Developer","hiringName":"JobsForce India for a confidential client","location":"Pune, Maharashtra, India","why":"Matches Java, SQL; aligns with your latest role; in Pune.","url":"https://jobsforceindia.com/job/example","applyUrl":null,"postedAt":"2026-11-11","source":"JobsForce India"}]}
+{"jobs":[{"title":"Java Developer","hiringName":"JobsForce India for a confidential client","location":"Pune, Maharashtra, India","why":"Matches Java, SQL; aligns with your latest role.","url":"https://jobsforceindia.com/job/example","applyUrl":null,"postedAt":"2026-11-11","source":"JobsForce India"}]}
 ```
 
 - Zero to **five** jobs, best first. No match or upstream error/timeout/429: HTTP 200 with `{"jobs":[]}`. Failures log only a warning class, not the query/resume/body. The existing Jobicy endpoint is independent of JobsForce failures.
@@ -14,16 +14,15 @@
 
 Reviewed https://jobsforceindia.com/developers and https://jobsforceindia.com/openapi.json. Uses the real `results`, `hiring.display`, location object, `posted_date`, and `apply_url` fields. No API key.
 
-Query = latest dated experience title + first up to three distinct parsed skills, capped at the API's 200-character limit. An allowlist recognises Indian cities in the parsed location; unrecognised/foreign locations are omitted. Common aliases match locally (e.g. Bangalore/Bengaluru). Experience comes from parsed experience date ranges, not an AI guess. Supports month-name/year, MM/YYYY, YYYY-MM and year-only ranges (year-only is January), and Present/Current/Ongoing/Now. Overlapping employment intervals are unioned; future endpoints are clamped to today. Less than one known year sets `fresher=true`; internships-only also set `job_type=internship`. Experienced candidates send `experience_years` (one decimal, max 50). Unknown/invalid professional dates omit both experience and fresher filters rather than inventing a value. No name, email, phone, company names or full resume text is sent.
+Query = latest dated experience title + first up to three distinct parsed skills, capped at the API's 200-character limit. The search covers all of India and does not filter by the resume's city. Experience comes from parsed experience date ranges, not an AI guess. Supports month-name/year, MM/YYYY, YYYY-MM and year-only ranges (year-only is January), and Present/Current/Ongoing/Now. Overlapping employment intervals are unioned; future endpoints are clamped to today. Less than one known year sets `fresher=true`; internships-only also set `job_type=internship`. Experienced candidates send `experience_years` (one decimal, max 50). Unknown/invalid professional dates omit both experience and fresher filters rather than inventing a value. No name, email, phone, company names or full resume text is sent.
 
 Fetches up to **40 candidates** (two pages of 20; only follows `has_more`/`next_page`), not merely five. There is no AI rerank. The rule-based score out of 100 is:
 
 - 60% of existing `JobMatcher.matchScore` (canonical skill coverage);
 - 30 × token-Jaccard title similarity, ignoring seniority words;
-- +5 for the resume's city match;
 - up to +5 for recency, linear from today to zero at 30 days (unknown/future dates get zero).
 
-**Minimum inclusive score: 40.0**, plus at least one matched skill or title similarity >= 0.5. City/recency alone cannot qualify. Do not pad: fewer than five is expected when only a few jobs pass. Sort by score, then posted date, then title; dedupe before taking five. The `why` line cites only matched skills, title alignment and/or actual city match.
+**Minimum inclusive score: 40.0**, plus at least one matched skill or title similarity >= 0.5. Recency alone cannot qualify. Do not pad: fewer than five is expected when only a few jobs pass. Sort by score, then posted date, then title; dedupe before taking five. The `why` line cites only matched skills and/or title alignment.
 
 Dedupe against the **actual five Jobicy suggestions** returned by the existing service for this resume (using its unchanged cache/ranking), and within JobsForce candidates, by normalised title+nonblank hiring/company name or either URL. URL normalisation ignores scheme, www, default ports, trailing slashes, fragment and common tracking parameters but preserves job identity query parameters. Missing hiring names never manufacture a title+company identity. Dedupe is recalculated even on JobsForce cache hits so a newly loaded Jobicy list is honoured. A Jobicy failure is isolated; JobsForce can still return its own strong picks.
 
@@ -37,7 +36,7 @@ Dedupe against the **actual five Jobicy suggestions** returned by the existing s
 
 `service/jobs/JobSuggestionService.java`: `MAX_RESULTS = 5` (previously 10). New rankings take five; existing cached ten-job lists are sliced to five on read without changing/replacing their cache row, TTL, matching logic, or response shape (`{"jobs":[...],"cached":true|false}`). No other Jobicy behaviour changes.
 
-Tests mock HTTP: query/date/city building, actual response shape/display attribution, URL filter, pagination, rate budget/cooldown/no retries, threshold and ranking/five cap, exact Jobicy-five dedupe, cache TTL/negative-cache/concurrency/cleanup, JWT/404, unchanged AI quota and JobsForce-to-Jobicy failure isolation.
+Tests mock HTTP: query/date building, actual response shape/display attribution, URL filter, pagination, rate budget/cooldown/no retries, threshold and ranking/five cap, exact Jobicy-five dedupe, cache TTL/negative-cache/concurrency/cleanup, JWT/404, unchanged AI quota and JobsForce-to-Jobicy failure isolation.
 
 ## Manual API smoke check
 
