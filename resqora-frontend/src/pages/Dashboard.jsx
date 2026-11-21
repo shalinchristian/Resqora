@@ -215,12 +215,13 @@ export default function Dashboard() {
       <input ref={fileInput} type="file" accept=".pdf,.docx" className="hidden"
         onChange={(e) => { const f = e.target.files[0]; e.target.value = ''; upload(f) }} />
 
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
         <div>
           <h1 className="font-serif text-3xl font-medium tracking-tight">Your resumes</h1>
           <p className="text-sm text-muted mt-1">{data.count} / {data.limit} resumes</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          <Link to="/build"><Button variant="ghost">Build a resume</Button></Link>
           {!empty && (
             <Button variant="accent" disabled={uploading || full} onClick={() => fileInput.current.click()}
               title={full ? 'Delete a resume to upload another' : undefined}>
@@ -240,6 +241,7 @@ export default function Dashboard() {
             <p className="font-medium">{uploading ? 'Uploading...' : 'Upload your first resume'}</p>
             <p className="text-sm text-muted mt-1">Drop a PDF or DOCX here, or click to choose one. Max 2 MB.</p>
           </button>
+          <p className="text-sm text-muted text-center">or <Link to="/build" className="text-ink underline-offset-2 hover:underline">build a resume from scratch</Link></p>
           <Welcome />
         </div>
       ) : (
