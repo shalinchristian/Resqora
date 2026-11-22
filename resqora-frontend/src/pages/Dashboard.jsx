@@ -99,24 +99,8 @@ const DASH_STARTERS = [
   { text: 'Which resume should I use for a backend role?' },
 ]
 
-function UsageRow({ label, u }) {
-  if (!u || u.limit == null) return null
-  const left = Math.max(0, u.remainingToday ?? 0)
-  return (
-    <div>
-      <div className="flex items-baseline justify-between">
-        <p className="text-sm text-muted">{label}</p>
-        <p className="text-sm tabular-nums"><span className="font-semibold">{left}</span> <span className="text-muted">of {u.limit} left</span></p>
-      </div>
-      <div className="h-1.5 bg-sunken rounded-full mt-2 overflow-hidden">
-        <div className="h-full bg-faint rounded-full" style={{ width: `${u.limit ? Math.min(1, left / u.limit) * 100 : 0}%` }} />
-      </div>
-    </div>
-  )
-}
-
-// AI switch plus today's chat allowance. When AI is off, nothing is sent to an AI service
-function AiCard({ usage }) {
+// AI switch. when it's off nothing is sent to any AI service
+function AiCard() {
   const { user, setUser } = useAuth()
   const aiOn = user?.aiEnabled !== false
   const [saving, setSaving] = useState(false)
@@ -142,13 +126,6 @@ function AiCard({ usage }) {
         </button>
       </div>
       {error && <p className="text-xs text-bad mt-2">{error}</p>}
-      {aiOn && usage && (
-        <div className="mt-4 pt-4 border-t border-line space-y-3.5">
-          <p className="text-xs text-muted">Chats today. Each has its own limit and resets daily.</p>
-          <UsageRow label="Dashboard chat" u={usage.dashboardChat} />
-          <UsageRow label="Resume chat" u={usage.resumeChat} />
-        </div>
-      )}
       {!aiOn && <p className="text-xs text-muted mt-3 pt-3 border-t border-line">Your resume text is never sent to an AI service while this is off.</p>}
     </div>
   )
@@ -157,7 +134,6 @@ function AiCard({ usage }) {
 export default function Dashboard() {
   const navigate = useNavigate()
   const [data, setData] = useState(null)
-  const [usage, setUsage] = useState(null)
   const [error, setError] = useState('')
   const [uploading, setUploading] = useState(false)
   const [dragging, setDragging] = useState(false)
@@ -168,7 +144,7 @@ export default function Dashboard() {
 
   const [loadError, setLoadError] = useState('')
   const load = () => api.listResumes().then((d) => { setData(d); setLoadError('') }).catch((e) => setLoadError(e.message))
-  useEffect(() => { load(); api.aiUsage().then(setUsage).catch(() => {}) }, [])
+  useEffect(() => { load() }, [])
 
   const upload = async (file) => {
     if (!file) return
@@ -215,7 +191,7 @@ export default function Dashboard() {
       <input ref={fileInput} type="file" accept=".pdf,.docx" className="hidden"
         onChange={(e) => { const f = e.target.files[0]; e.target.value = ''; upload(f) }} />
 
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
         <div>
           <h1 className="font-serif text-3xl font-medium tracking-tight">Your resumes</h1>
           <p className="text-sm text-muted mt-1">{data.count} / {data.limit} resumes</p>
@@ -267,7 +243,7 @@ export default function Dashboard() {
 
           <aside className="space-y-6 lg:sticky lg:top-20 order-2 lg:col-start-2 lg:row-start-1">
             {best && <BestScore resume={best} />}
-            <AiCard usage={usage} />
+            <AiCard />
             <ChatPanel title="Ask about all your resumes" placeholder="Ask about your resumes" starters={DASH_STARTERS}
               kind="dashboardChat" send={api.dashboardChat} showUsage={false}
               historyKey="dashboard" loadHistory={api.dashboardChatHistory} clearHistory={api.clearDashboardChat}

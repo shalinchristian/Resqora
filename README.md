@@ -11,7 +11,7 @@
 
 <br/>
 
-> **Resqora** is a resume analysis web application built with **Java, Spring Boot, React, and PostgreSQL**. It extracts content from PDF and DOCX resumes, provides rule-based scoring and feedback, matches resumes against job descriptions, suggests remote jobs, and offers optional AI assistance through Google Gemini and Groq.
+> **Resqora** is a resume analysis web application built with **Java, Spring Boot, React, and PostgreSQL**. It extracts content from PDF and DOCX resumes, provides rule-based scoring and feedback, matches resumes against job descriptions, suggests jobs from Jobicy and JobsForce, includes a resume builder, and offers optional AI assistance through Google Gemini and Groq.
 
 <details open>
 <summary><b>Table of contents</b></summary>
@@ -34,11 +34,12 @@
 |---|---|
 | **Resume analysis** | Extracts text and organises it into contact information, skills, education, experience, projects, and certifications. |
 | **Scoring and findings** | Calculates an overall score and section scores, with findings that point to content that may need improvement. |
-| **Job matching** | Compares resume skills with a job description using a local dictionary of approximately 200 skills and aliases. Matching is deterministic and does not use AI. |
-| **Job suggestions** | Retrieves remote roles from [Jobicy](https://jobicy.com/api/v2), ranks them by match score, and links to the original listings. |
-| **AI assistance (optional)** | Generates a saved resume summary (Gemini), a chat inside each resume (Gemini), and a dashboard chat about all your resumes (Groq). Each user gets 20 chats a day. |
+| **Job matching** | Compares resume skills with a job description using a local dictionary of approximately 220 skills and aliases. Matching is deterministic and does not use AI. |
+| **Job suggestions** | Retrieves remote Asia-Pacific roles from [Jobicy](https://jobicy.com/api/v2) and India-wide roles from [JobsForce](https://jobsforceindia.com), ranks them by match score (up to five from each), and links to the original listings. |
+| **AI assistance (optional)** | Generates a saved resume summary (Gemini), a chat inside each resume (Gemini), and a dashboard chat about all your resumes (Groq, falling back to Gemini). Each user gets 20 resume chats, 20 dashboard chats, and 10 summaries a day, and chat history is saved. |
 | **AI privacy switch** | Users can turn AI off from the dashboard. When it's off, nothing is sent to any AI provider. |
-| **Account management** | JWT authentication, BCrypt password hashing, account settings, and user-specific resume access. |
+| **Account management** | Email verification with 6-digit codes, forgot password, JWT authentication, BCrypt password hashing, login throttling, account settings, account deletion, and user-specific resume access. |
+| **Resume builder** | Builds a resume from a form (optionally prefilled from an uploaded file) with a live preview, and downloads it as PDF or DOCX. |
 | **Document handling** | Uploads, lists, previews, and deletes PDF/DOCX files. Uploads are limited to 2 MB per file and five resumes per user. |
 | **API documentation** | Swagger UI with JWT authorization support. |
 
@@ -52,12 +53,12 @@
 |---|---|
 | **Language** | ![Java](https://img.shields.io/badge/Java_21-ED8B00?style=flat-square&logo=openjdk&logoColor=white) |
 | **Backend** | Spring Boot 4.1.1, Spring Web MVC, Spring Data JPA, Spring Security, Validation |
-| **Authentication** | JWT (`jjwt` 0.12.6), BCrypt |
-| **Database and migrations** | PostgreSQL, Hibernate/JPA, Flyway (V1–V8) |
+| **Authentication** | JWT (`jjwt` 0.12.6), BCrypt, email codes sent through Resend |
+| **Database and migrations** | PostgreSQL, Hibernate/JPA, Flyway (V1–V14) |
 | **PDF and DOCX parsing** | Apache PDFBox 3.0.5, Apache POI 5.4.1 |
 | **API documentation** | springdoc-openapi 3.1.1, Swagger UI |
 | **AI integration** | Google Gemini and Groq REST APIs via Spring `RestClient` |
-| **Job search** | Jobicy REST API via Spring `RestClient` |
+| **Job search** | Jobicy and JobsForce REST APIs via Spring `RestClient` |
 | **Frontend** | React 19, React Router 7, Vite 6, Tailwind CSS 4, `docx-preview` |
 | **Testing** | JUnit 5, Mockito, Spring MockMvc, H2 |
 | **Containerisation and build** | Docker multi-stage build, Maven Wrapper, npm |
@@ -86,6 +87,8 @@ flowchart TD
     S -. optional .-> G[Google Gemini API]
     S -. optional .-> Q[Groq API]
     S -.-> J[Jobicy API]
+    S -.-> JF[JobsForce API]
+    S -.-> M[Resend email API]
     C --> E[Global exception handler]
 ```
 
@@ -127,6 +130,8 @@ The analysis is generated during upload and saved with the resume, allowing the 
 erDiagram
     users ||--o{ resumes : owns
     users ||--o{ ai_usage : consumes
+    users ||--o{ email_codes : receives
+    users ||--o{ chat_messages : writes
     resumes ||--o| resume_analyses : has
     resumes ||--o| job_suggestions : caches
 
@@ -135,6 +140,8 @@ erDiagram
         VARCHAR email UK
         VARCHAR password_hash
         VARCHAR name
+        BOOLEAN email_verified
+        VARCHAR status
         TIMESTAMP created_at
     }
     resumes {
@@ -170,9 +177,26 @@ erDiagram
         TEXT response_json
         TIMESTAMP created_at
     }
+    email_codes {
+        BIGINT id PK
+        BIGINT user_id FK
+        VARCHAR purpose
+        VARCHAR code_hash
+        INT attempts
+        TIMESTAMP expires_at
+    }
+    chat_messages {
+        BIGINT id PK
+        BIGINT user_id FK
+        BIGINT resume_id FK
+        VARCHAR scope
+        VARCHAR role
+        TEXT content
+        TIMESTAMP created_at
+    }
 ```
 
-Each user can own multiple resumes and AI usage records. A resume can have a saved analysis and cached job suggestions. Resume-related records are deleted when their parent resume is deleted, according to the configured foreign-key cascade rules. Flyway migrations define the actual database schema.
+Each user can own multiple resumes, AI usage records, email codes, and chat messages. A resume can have a saved analysis and cached job suggestions. Resume-related records are deleted when their parent resume is deleted, according to the configured foreign-key cascade rules. Flyway migrations define the actual database schema.
 
 ---
 
@@ -198,6 +222,8 @@ RESQORA_JWT_SECRET=REPLACE_WITH_A_SECURE_SECRET_AT_LEAST_32_CHARACTERS_LONG
 GEMINI_API_KEY=
 # Optional: enables the dashboard chat (falls back to Gemini without it)
 GROQ_API_KEY=
+# Needed to send verification and password-reset emails
+RESEND_API_KEY=
 ```
 
 > Use a secure JWT secret of at least 32 characters. Never commit `.env`, database credentials, JWT secrets, or API keys. If PostgreSQL runs on your host while the backend runs in Docker Desktop, `host.docker.internal` can be used as the database hostname. Replace it if your deployment uses a different network setup.
@@ -261,7 +287,7 @@ cd resqora-backend
 ./mvnw test
 ```
 
-On Windows, use `.\mvnw.cmd test`. The tests use H2 and test doubles for external services, so they do not require a real Gemini or Groq key or Jobicy API call.
+On Windows, use `.\mvnw.cmd test`. The tests use H2 and test doubles for external services, so they do not require a real Gemini or Groq key, Resend key, or Jobicy or JobsForce API call.
 
 ### Configuration
 
@@ -289,6 +315,9 @@ On Windows, use `.\mvnw.cmd test`. The tests use H2 and test doubles for externa
 | `RESQORA_TIMEZONE` | `Asia/Kolkata` | Time zone for daily AI limits |
 | `RESQORA_JOBICY_BASE_URL` | `https://jobicy.com/api/v2` | Jobicy API base URL |
 | `RESQORA_SWAGGER_ENABLED` | `true` | Enables/disables Swagger UI and API docs |
+| `RESEND_API_KEY` | Empty | Sends verification and password-reset emails through Resend |
+| `EMAIL_FROM` | `noreply@resqora.xyz` | Sender address for those emails |
+| `RESQORA_REQUIRE_EMAIL_VERIFICATION` | `true` | Requires new accounts to verify their email |
 
 Login throttling options are also configurable through environment variables; see `resqora-backend/src/main/resources/application.properties` for their defaults.
 
@@ -301,8 +330,8 @@ Login throttling options are also configurable through environment variables; se
 - Scanned or image-only PDFs are rejected with `422 Unprocessable Entity`; OCR is not implemented.
 - Parsing uses text patterns and heuristics. Unusual layouts can still be misread.
 - Resume analysis runs synchronously during upload, so larger files can take longer to process.
-- Job suggestions focus on remote jobs open to the Asia-Pacific region, not all office-based jobs in Indian cities.
-- Job results are cached in memory for 30 minutes and per resume for 12 hours; caches are not shared across backend instances.
+- Jobicy suggestions focus on remote jobs open to the Asia-Pacific region; JobsForce suggestions cover India but depend on that site's listings.
+- Job results are cached per resume for 12 hours (Jobicy searches also for 30 minutes in memory); in-memory caches are not shared across backend instances.
 - JWTs expire after one hour by default. Refresh tokens are not implemented.
 - Login throttling is in memory, resets on restart, and is not shared across backend instances.
 - AI features send resume text, and any supplied job description or chat context, to Google Gemini or Groq. Users can turn AI off, and then nothing is sent. AI is optional; scoring and job matching do not depend on it.
