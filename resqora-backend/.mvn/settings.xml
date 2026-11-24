@@ -1,0 +1,10 @@
+<settings>
+  <mirrors>
+    <!-- maven central keeps rate limiting render's build ip, so use google's copy of central -->
+    <mirror>
+      <id>google-central</id>
+      <mirrorOf>central</mirrorOf>
+      <url>https://maven-central.storage-download.googleapis.com/maven2/</url>
+    </mirror>
+  </mirrors>
+</settings>
